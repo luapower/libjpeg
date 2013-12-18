@@ -1,15 +1,18 @@
-# libjpeg
-libjpeg / turbojpeg ffi binding
+---
+project: libjpeg
+tagline: libjpeg-turbo Lua+ffi binding
+---
 
-_*NOTE: work-in-progress (version 1.0 coming soon)*_
+## NOTE: work-in-progress (version 1.0 coming soon)
 
-v1.0 | [binding](http://code.google.com/p/lua-files/source/browse/libjpeg.lua) | [header](http://code.google.com/p/lua-files/source/browse/libjpeg_h.lua) | [demo](http://code.google.com/p/lua-files/source/browse/libjpeg_demo.lua) | libjpeg-turbo 1.2.1 | LuaJIT 2
+v1.0 | libjpeg-turbo 1.2.1 | LuaJIT 2
 
 ## `local libjpeg = require'libjpeg'`
 
-A ffi binding of [libjpeg-turbo](http://libjpeg-turbo.virtualgl.org/), a fast and complete JPEG codec.
+A Lua+ffi binding for [libjpeg-turbo], a fast and complete JPEG codec.
 
 ## Features
+
   * progressive loading
   * partial loading
   * fractional scaling
@@ -47,7 +50,7 @@ Read and decode a JPEG image.
         * also called on error, as `render_scan(nil, true, scan_number, error)`, where `scan_number` is the scan number that was supposed to be rendering next and `error` the error message.
       * `warning`: a function to be called as `warning(msg, level)` on non-fatal errors.
 
-For more info on the decoding process and options read the [libjpeg-turbo documentation](http://sourceforge.net/p/libjpeg-turbo/code/HEAD/tree/trunk/libjpeg.txt).
+For more info on the decoding process and options read the [libjpeg-turbo doc].
 
 The returned image object is a table with the fields:
     * `file`: a table describing file attributes: `w`, `h`, `format`, `progressive`, `jfif`, `adobe`.
@@ -58,10 +61,17 @@ The returned image object is a table with the fields:
     * `partial`: true if the image was found to be truncated and it was partially loaded.
 
 ## Help needed
+
   * encoding API
   * progressive loading at scan line level
   * jit is turned off because we can't call error() from a ffi callback called from C; and yet we must not return control to C on errors. is there a way around it?
   * the read callback cannot yield since it is called from C code. this means coroutine-based socket schedulers are out, so much for progressive loading. is there a way around it?
 
 ----
-See also: [nanojpeg], [imagefile].
+See also: [nanojpeg], [imagefile]
+
+[libjpeg-turbo]:      http://www.libjpeg-turbo.org/
+[libjpeg-turbo doc]:  http://sourceforge.net/p/libjpeg-turbo/code/HEAD/tree/trunk/libjpeg.txt
+
+[nanojpeg]:   nanojpeg.html
+[imagefile]:  imagefile.html
