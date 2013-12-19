@@ -1,6 +1,6 @@
 ---
 project: libjpeg
-tagline: libjpeg-turbo Lua+ffi binding
+tagline: libjpeg-turbo ffi binding
 ---
 
 ## NOTE: work-in-progress (version 1.0 coming soon)
@@ -68,10 +68,8 @@ The returned image object is a table with the fields:
   * the read callback cannot yield since it is called from C code. this means coroutine-based socket schedulers are out, so much for progressive loading. is there a way around it?
 
 ----
-See also: [nanojpeg], [imagefile]
+See also: [nanojpeg](nanojpeg.html)
+
 
 [libjpeg-turbo]:      http://www.libjpeg-turbo.org/
 [libjpeg-turbo doc]:  http://sourceforge.net/p/libjpeg-turbo/code/HEAD/tree/trunk/libjpeg.txt
-
-[nanojpeg]:   nanojpeg.html
-[imagefile]:  imagefile.html
