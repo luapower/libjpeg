@@ -5,7 +5,7 @@ local glue = require'glue' --fcall, index, pass
 local stdio = require'stdio' --fopen
 local jit = require'jit' --off
 require'libjpeg_h'
-local C = ffi.load'libjpeg'
+local C = ffi.load'jpeg'
 
 local LIBJPEG_VERSION = 62
 
