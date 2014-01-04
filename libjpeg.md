@@ -1,6 +1,7 @@
 ---
-project: libjpeg
-tagline: libjpeg-turbo ffi binding
+project:     libjpeg
+tagline:     libjpeg-turbo ffi binding
+category:    Raster Images
 ---
 
 ## NOTE: work-in-progress (version 1.0 coming soon)
