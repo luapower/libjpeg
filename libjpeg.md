@@ -6,8 +6,6 @@ category:    Raster Images
 
 ## NOTE: work-in-progress (version 1.0 coming soon)
 
-v1.0 | libjpeg-turbo 1.2.1 | LuaJIT 2
-
 ## `local libjpeg = require'libjpeg'`
 
 A Lua+ffi binding for [libjpeg-turbo], a fast and complete JPEG codec.
