@@ -1,3 +1,5 @@
+cat build-mingw32.sh && exit
+
 need: mingw, cmake, nasm (all in PATH)
 
 > cd srcdir
