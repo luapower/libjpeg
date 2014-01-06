@@ -9,4 +9,3 @@ need: mingw, cmake, nasm (all in PATH)
 copy libjpeg.dll to bin/jpeg.dll
 
 strip bin/jpeg.dll
-upx bin/jpeg.dll
