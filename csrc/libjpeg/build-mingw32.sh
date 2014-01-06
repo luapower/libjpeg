@@ -6,6 +6,6 @@ need: mingw, cmake, nasm (all in PATH)
 > cmake -G "MSYS Makefiles" .
 > make
 
-copy libjpeg.dll to bin/jpeg.dll
+copy libjpeg-62.dll to bin/jpeg.dll
 
 strip bin/jpeg.dll
