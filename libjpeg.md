@@ -1,13 +1,13 @@
 ---
-project:     libjpeg
-tagline:     libjpeg-turbo ffi binding
+project: libjpeg
+tagline: JPEG reader
 ---
 
 ## NOTE: work-in-progress (version 1.0 coming soon)
 
 ## `local libjpeg = require'libjpeg'`
 
-A Lua+ffi binding for [libjpeg-turbo], a fast and complete JPEG codec.
+A ffi binding for [libjpeg-turbo], a fast and complete JPEG codec.
 
 ## Features
 
