@@ -1,0 +1,14 @@
+*
+!/bin/
+!/csrc/
+!/bin/mingw32/
+!/bin/linux32/
+!/media/
+
+!/libjpeg*
+!/bin/mingw32/jpeg*
+!/bin/linux32/libjpeg*
+!/csrc/libjpeg/
+!/csrc/libjpeg/**
+!/media/jpeg/
+!/media/jpeg/**
