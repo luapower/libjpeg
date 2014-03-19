@@ -1,5 +1,4 @@
 which nasm  >/dev/null || { echo "you need nasm 2.07+"; exit 1; }
-which cmake >/dev/null || { echo "you need cmake"; exit 1; }
 
 ver=1.3.0
 file=libjpeg-turbo-$ver
