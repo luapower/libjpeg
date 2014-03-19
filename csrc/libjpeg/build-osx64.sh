@@ -5,3 +5,4 @@ cd src
 make clean
 make
 cp -f ".libs/$(readlink .libs/libjpeg.dylib)" ../../../bin/osx64/libjpeg.dylib
+make clean

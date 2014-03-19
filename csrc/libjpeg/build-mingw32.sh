@@ -5,3 +5,4 @@ make clean
 make jpeg
 strip sharedlib/libjpeg-62.dll
 cp sharedlib/libjpeg-62.dll ../../../bin/mingw32/jpeg.dll
+make clean

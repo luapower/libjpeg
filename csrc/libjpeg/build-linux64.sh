@@ -4,3 +4,4 @@ cd src
 make clean
 make
 cp -f ".libs/$(readlink .libs/libjpeg.so)" ../../../bin/linux64/libjpeg.so
+make clean

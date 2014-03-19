@@ -2,4 +2,4 @@ libjpeg-turbo 1.3.0 from http://downloads.sourceforge.net/project/libjpeg-turbo/
 
 download link: http://downloads.sourceforge.net/project/libjpeg-turbo/1.3.0/libjpeg-turbo-1.3.0.tar.gz
 
-Note: for building on OSX 64 for OSX 64, get NASM 2.07+ from MacPorts.
+Note: for building on OSX, get NASM 2.07+ from MacPorts.
