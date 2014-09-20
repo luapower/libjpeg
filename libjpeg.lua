@@ -1,9 +1,9 @@
 --libjpeg binding
 local ffi = require'ffi'
 local bit = require'bit'
-local glue = require'glue' --fcall, index, pass
-local stdio = require'stdio' --fopen
-local jit = require'jit' --off
+local glue = require'glue'
+local stdio = require'stdio'
+local jit = require'jit'
 require'libjpeg_h'
 local C = ffi.load'jpeg'
 
@@ -36,14 +36,18 @@ local channel_count = {
 
 local color_spaces = glue.index(formats)
 
---all conversions that libjpeg implements, in order of preference. {source = {dest1, ...}}.
+--all conversions that libjpeg implements, in order of preference.
+--{source = {dest1, ...}}
 local conversions = {
-	ycc8 = {'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8', 'abgr8', 'rgbx8', 'bgrx8', 'xrgb8', 'xbgr8', 'g8'},
-	g8 = {'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8', 'abgr8', 'rgbx8', 'bgrx8', 'xrgb8', 'xbgr8'},
+	ycc8 = {'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8', 'abgr8', 'rgbx8',
+		'bgrx8', 'xrgb8', 'xbgr8', 'g8'},
+	g8 = {'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8', 'abgr8', 'rgbx8', 'bgrx8',
+		'xrgb8', 'xbgr8'},
 	ycck8 = {'cmyk8'},
 }
 
---given current pixel format of an image and an accept table, choose the best accepted pixel format.
+--given current pixel format of an image and an accept table,
+--choose the best accepted pixel format.
 local function best_format(format, accept)
 	if not accept or accept[format] then --no preference or source format accepted
 		return format
@@ -58,23 +62,13 @@ local function best_format(format, accept)
 	return format --not convertible
 end
 
---given current orientation of an image and an accept table, choose the best accepted orientation.
-local function best_orientation(orientation, accept)
-	return
-		(not accept or (accept.top_down == nil and accept.bottom_up == nil)) and orientation --no preference, keep it
-		or accept[orientation] and orientation --same as source, keep it
-		or accept.top_down and 'top_down'
-		or accept.bottom_up and 'bottom_up'
-		or error('invalid orientation')
-end
-
---given a row stride, return the next larger multiple of 4 stride.
+--given a row stride, return the next larger stride that is a multiple of 4.
 local function pad_stride(stride)
 	return bit.band(stride + 3, bit.bnot(3))
 end
 
---given a string or cdata/size pair, return a stream reader function that returns the entire data
---the first time it is called, and then returns nothing on subsequent calls, signaling eof.
+--given a string or cdata/size pair, return a reader function that returns
+--the entire data on the first call.
 local function one_shot_reader(buf, sz)
 	local done
 	return function()
@@ -116,43 +110,65 @@ local dct_methods = {
 	float = C.JDCT_FLOAT,
 }
 
+local ccptr_ct = ffi.typeof'const uint8_t*' --const prevents copying
+
+--create and setup a error handling object.
+local function jpeg_err(t, finally)
+	local jerr = ffi.new'jpeg_error_mgr'
+	C.jpeg_std_error(jerr)
+	local err_cb = ffi.cast('jpeg_error_exit_callback', function(cinfo)
+		local buf = ffi.new'uint8_t[512]'
+		cinfo.err.format_message(cinfo, buf)
+		error(ffi.string(buf))
+	end)
+	local warnbuf --cache this buffer because there are a ton of messages
+	local emit_cb = ffi.cast('jpeg_emit_message_callback', function(cinfo, level)
+		if t.warning then
+			warnbuf = warnbuf or ffi.new'uint8_t[512]'
+			cinfo.err.format_message(cinfo, warnbuf)
+			t.warning(ffi.string(warnbuf), level)
+		end
+	end)
+	finally(function() --anchor jerr, err_cb, emit_cb
+		C.jpeg_std_error(jerr) --reset jerr fields
+		err_cb:free()
+		emit_cb:free()
+	end)
+	jerr.error_exit = err_cb
+	jerr.emit_message = emit_cb
+	return jerr
+end
+
+--create a top-down or bottom-up array of rows pointing to a bitmap buffer.
+local function jpeg_rows(h, bottom_up, data, stride)
+	local rows = ffi.new('uint8_t*[?]', h)
+	if bottom_up then
+		for i=0,h-1 do
+			rows[h-1-i] = data + (i * stride)
+		end
+	else
+		for i=0,h-1 do
+			rows[i] = data + (i * stride)
+		end
+	end
+	return rows
+end
+
 local function load(t)
-	return glue.fcall(function(finally, onerror)
+	return glue.fcall(function(finally)
 
 		--create the state object and output image
 		local cinfo = ffi.new'jpeg_decompress_struct'
 		local img = {}
 
 		--setup error handling
-		local jerr = ffi.new'jpeg_error_mgr'
-		C.jpeg_std_error(jerr)
-		local err_cb = ffi.cast('jpeg_error_exit_callback', function(cinfo)
-			local buf = ffi.new'uint8_t[512]'
-			cinfo.err.format_message(cinfo, buf)
-			error(ffi.string(buf))
-		end)
-		local warnbuf --cache this buffer because there are a ton of messages
-		local emit_cb = ffi.cast('jpeg_emit_message_callback', function(cinfo, level)
-			if t.warning then
-				warnbuf = warnbuf or ffi.new'uint8_t[512]'
-				cinfo.err.format_message(cinfo, warnbuf)
-				t.warning(ffi.string(warnbuf), level)
-			end
-		end)
-		finally(function()
-			C.jpeg_std_error(jerr)
-			err_cb:free()
-			emit_cb:free()
-		end)
-		jerr.error_exit = err_cb
-		jerr.emit_message = emit_cb
-		cinfo.err = jerr
+		cinfo.err = jpeg_err(t, finally)
 
 		--init state
 		C.jpeg_CreateDecompress(cinfo, LIBJPEG_VERSION, ffi.sizeof(cinfo))
 		finally(function() C.jpeg_destroy_decompress(cinfo) end)
 
-		--setup input source
+		--setup source
 		if t.stream then
 			C.jpeg_stdio_src(cinfo, t.stream)
 		elseif t.path then
@@ -173,12 +189,12 @@ local function load(t)
 			cb.term_source = glue.pass
 			cb.resync_to_restart = C.jpeg_resync_to_restart
 
-			local partial_loading = t.partial_loading == nil or t.partial_loading
+			local partial_loading = t.partial_loading ~= false
 
-			local buf, sz, s --these must be upvalues so they don't get collected between calls
+			local buf, sz, s --upvalues to prevent collecting between calls
 			function cb.fill_input_buffer(cinfo)
 				s = nil --release the string from the last call if any
-				buf, sz = read() --release the buffer from the last call and pin a new one
+				buf, sz = read() --replace the buffer from the last call
 				if not buf then
 					if partial_loading then
 						buf = JPEG_EOI
@@ -188,8 +204,8 @@ local function load(t)
 					end
 				end
 				if type(buf) == 'string' then
-					s = buf --pin buf in upvalue s
-					buf = ffi.cast('const uint8_t*', s) --const prevents string copy
+					s = buf --anchor buf in upvalue to prevent collecting
+					buf = ffi.cast(ccptr_ct, s) --const prevents string copy
 					sz = #s
 				end
 				assert(sz > 0, 'eof')
@@ -211,7 +227,7 @@ local function load(t)
 			--create a source manager and set it up
 			local mgr, free_mgr = callback_manager('jpeg_source_mgr', cb)
 			cinfo.src = mgr
-			finally(function() --the finalizer needs to pin mgr or it gets collected
+			finally(function() --the finalizer anchors mgr through free_mgr!
 				cinfo.src = nil
 				free_mgr()
 			end)
@@ -257,7 +273,8 @@ local function load(t)
 		cinfo.output_components = channel_count[img.format]
 		cinfo.scale_num = t.scale_num or 1
 		cinfo.scale_denom = t.scale_denom or 1
-		cinfo.dct_method = assert(dct_methods[t.dct_method or 'accurate'], 'invalid dct_method')
+		cinfo.dct_method =
+			assert(dct_methods[t.dct_method or 'accurate'], 'invalid dct_method')
 		cinfo.do_fancy_upsampling = t.fancy_upsampling or false
 		cinfo.do_block_smoothing = t.block_smoothing or false
 		cinfo.buffered_image = img.file.progressive and t.render_scan and 1 or 0
@@ -275,22 +292,12 @@ local function load(t)
 			img.stride = pad_stride(img.stride)
 		end
 
-		--allocate image and rows buffers
+		--allocate image and row buffers
 		img.size = img.h * img.stride
 		img.data = ffi.new('uint8_t[?]', img.size)
-		local rows = ffi.new('uint8_t*[?]', img.h)
+		img.bottom_up = t.accept and t.accept.bottom_up
 
-		--arrange row pointers top-down or bottom-up
-		img.orientation = best_orientation('top_down', t.accept)
-		if img.orientation == 'bottom_up' then
-			for i=0,img.h-1 do
-				rows[img.h-1-i] = img.data + (i * img.stride)
-			end
-		else
-			for i=0,img.h-1 do
-				rows[i] = img.data + (i * img.stride)
-			end
-		end
+		local rows = jpeg_rows(img.h, img.bottom_up, img.data, img.stride)
 
 		--finally, decompress the image
 		local function render_scan(last_scan, scan_number, multiple_scans)
@@ -304,11 +311,6 @@ local function load(t)
 				local actual = C.jpeg_read_scanlines(cinfo, rows + i, n)
 				assert(actual == n)
 				assert(cinfo.output_scanline == i + actual)
-
-				--call the line-level callback
-				if t.update_lines then
-					t.update_lines(img)
-				end
 			end
 
 			--call the rendering callback on the converted image
@@ -335,17 +337,110 @@ local function load(t)
 				if C.jpeg_input_complete(cinfo) ~= 0 then return end
 			end
 		else
-			render_scan(true, 1)
+			render_scan(true, 1, false)
 		end
 
 		C.jpeg_finish_decompress(cinfo)
+
 		return img
 	end)
 end
 
 jit.off(load, true) --can't call error() from callbacks called from C
 
-if not ... then require'libjpeg_demo' end
+local function save(t)
+
+	return glue.fcall(function(finally)
+
+		--create the state object.
+		local cinfo = ffi.new'jpeg_compress_struct'
+
+		--setup error handling.
+		cinfo.err = jpeg_err(t, finally)
+
+		--init state.
+		C.jpeg_CreateCompress(cinfo, LIBJPEG_VERSION, ffi.sizeof(cinfo))
+		finally(function() C.jpeg_destroy_compress(cinfo) end)
+
+		--setup destination.
+		if t.stream then
+			C.jpeg_stdio_dest(cinfo, t.stream)
+		elseif t.path then
+			local file = stdio.fopen(t.path, 'wb')
+			finally(function()
+				C.jpeg_stdio_dest(cinfo, nil)
+				file:close()
+			end)
+			C.jpeg_stdio_dest(cinfo, file)
+		elseif t.string or t.cdata or t.write then
+			--TODO:
+		else
+			error'destination missing'
+		end
+
+		--set source format.
+		cinfo.image_width = t.bitmap.w
+		cinfo.image_height = t.bitmap.h
+		local channels =
+			assert(t.bitmap.format:match'^[a-z]+', 'invalid source format')
+		cinfo.input_components = #channels
+		cinfo.in_color_space =
+			assert(color_spaces[t.bitmap.format], 'invalid source format')
+
+		--set the default compression options based on in_color_space.
+		C.jpeg_set_defaults(cinfo)
+
+		--set compression options.
+		if t.format then
+			C.jpeg_set_colorspace(cinfo,
+				assert(color_spaces[t.format], 'invalid destination format'))
+		end
+		if t.quality then
+			C.jpeg_set_quality(cinfo, t.quality, true)
+		end
+		if t.progressive then
+			C.jpeg_simple_progression(cinfo)
+		end
+		if t.dct_method then
+			cinfo.dct_method = assert(dct_methods[t.dct_method], 'invalid dct_method')
+		end
+		if t.optimize_coding then
+			cinfo.optimize_coding = t.optimize_coding
+		end
+		if t.smoothing then
+			cinfo.smoothing_factor = t.smoothing
+		end
+		if t.w or t.h then
+			cinfo.jpeg_width = t.w or cinfo.image_width
+			cinfo.jpeg_height = t.h or cinfo.image_height
+		end
+
+		--start the compression cycle.
+		C.jpeg_start_compress(cinfo, true)
+
+		--make row pointers from the bitmap buffer.
+		local bmp = t.bitmap
+		local rows = jpeg_rows(bmp.h, bmp.bottom_up, bmp.data, bmp.stride)
+
+		--compress rows.
+		C.jpeg_write_scanlines(cinfo, rows, bmp.h)
+
+		--finish the compression, optionally adding additional scans.
+		C.jpeg_finish_compress(cinfo)
+
+		--TODO: return string, cdata...
+	end)
+end
+
+
+if not ... then
+
+	local img = load{path = 'media/jpeg/progressive.jpg'}
+
+	save{bitmap = img, path = 'media/jpeg/progressive2.jpg'}
+
+	--require'libjpeg_demo'
+end
 
 return {
 	load = load,

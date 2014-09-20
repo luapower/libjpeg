@@ -5,15 +5,19 @@ local glue = require'glue'
 local ffi = require'ffi'
 local stdio = require'stdio'
 
+player.continuous_rendering = true
+
 require'unit'
-local files = dir'media/jpeg/test*'
+local files = {}
+glue.extend(files, dir'media/jpeg/test*')
 table.insert(files, 'media/jpeg/progressive.jpg')
-table.insert(files, 'media/jpeg/cmyk.jpg')
+--table.insert(files, 'media/jpeg/cmyk.jpg')
 --table.insert(files, 'media/jpeg/autumn-wallpaper.jpg')
 
 --gui options
 local formats = {ycc8 = true}
-local cut_size = 1024 * 64 --truncate input file to size to test progressive mode
+local max_cut_size = 1024 * 64
+local cut_size = max_cut_size --truncate input file to size to test progressive mode
 local scroll = 0
 local total_h = 0
 
@@ -28,40 +32,71 @@ local stride_aligned = false
 
 function player:on_render(cr)
 
-	--self.theme = self.themes.light
+	source_type = self:mbutton{
+		id = 'source_type', x = 10, y = 10, w = 480, h = 24,
+		values = {'path', 'stream', 'cdata', 'string', 'read cdata', 'read string'},
+		selected = source_type}
 
-	source_type = self:mbutton{id = 'source_type', x = 10, y = 10, w = 480, h = 24,
-						values = {'path', 'stream', 'cdata', 'string', 'read cdata', 'read string'},
-						selected = source_type}
 	if source_type ~= 'path' and source_type ~= 'stream' then
-		partial = self:togglebutton{id = 'partial', x = 500, y = 10, w = 140, h = 24, text = 'partial loading',
-												selected = partial}
-		cut_size = self:slider{id = 'cut_size', x = 650, y = 10, w = self.w - 650 - 10, h = 24,
-										i0 = 0, i1 = 1024 * 64, step = 1, i = cut_size, text = 'file cut'}
+
+		partial = self:togglebutton{
+			id = 'partial', x = 500, y = 10, w = 140, h = 24,
+			text = 'partial loading',
+			selected = partial}
+
+		cut_size = self:slider{
+			id = 'cut_size',
+			x = 650, y = 10, w = self.w - 650 - 10, h = 24,
+			i0 = 0, i1 = max_cut_size, step = 1, i = cut_size,
+			text = 'file cut'}
 	end
 
-	dct_method = self:mbutton{id = 'dct', x = 10, y = 40, w = 180, h = 24, values = {'accurate', 'fast', 'float'}, selected = dct_method}
-	fancy_upsampling = self:togglebutton{id = 'fancy_upsampling', x = 200, y = 40, w = 140, h = 24, text = 'fancy upsampling', selected = fancy_upsampling}
-	block_smoothing = self:togglebutton{id = 'block_smoothing', x = 350, y = 40, w = 140, h = 24, text = 'block smoothing', selected = block_smoothing}
+	dct_method = self:mbutton{
+		id = 'dct', x = 10, y = 40, w = 180, h = 24,
+		values = {'accurate', 'fast', 'float'},
+		selected = dct_method}
 
-	formats = self:mbutton{id = 'format', x = 500, y = 40, w = 590, h = 24,
-						values = {'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8', 'abgr8', 'rgbx8', 'bgrx8', 'xrgb8', 'xbgr8',
-										'g8', 'ga8', 'ag8', 'ycc8', 'ycck8', 'cmyk8'},
-						selected = formats}
+	fancy_upsampling = self:togglebutton{
+		id = 'fancy_upsampling',
+		x = 200, y = 40, w = 140, h = 24,
+		text = 'fancy upsampling',
+		selected = fancy_upsampling}
 
-	bottom_up = self:togglebutton{id = 'bottom_up', x = 1100, y = 40, w = 90, h = 24, text = 'bottom_up', selected = bottom_up}
-	stride_aligned = self:togglebutton{id = 'stride_aligned', x = 1200, y = 40, w = 90, h = 24,
-									text = 'stride_aligned', selected = stride_aligned}
+	block_smoothing = self:togglebutton{
+		id = 'block_smoothing', x = 350, y = 40, w = 140, h = 24,
+		text = 'block smoothing',
+		selected = block_smoothing}
 
-	stride_aligned = self:togglebutton{id = 'stride_aligned', x = 1200, y = 40, w = 90, h = 24,
-									text = 'stride_aligned', selected = stride_aligned}
+	formats = self:mbutton{
+		id = 'format', x = 500, y = 40, w = 590, h = 24,
+		values = {'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8',
+					'abgr8', 'rgbx8', 'bgrx8', 'xrgb8', 'xbgr8',
+					'g8', 'ga8', 'ag8', 'ycc8', 'ycck8', 'cmyk8'},
+		selected = formats}
+
+	bottom_up = self:togglebutton{
+		id = 'bottom_up', x = 1100, y = 40, w = 90, h = 24,
+		text = 'bottom_up',
+		selected = bottom_up}
+
+	stride_aligned = self:togglebutton{
+		id = 'stride_aligned', x = 1200, y = 40, w = 90, h = 24,
+		text = 'stride_aligned',
+		selected = stride_aligned}
+
+	stride_aligned = self:togglebutton{
+		id = 'stride_aligned', x = 1200, y = 40, w = 90, h = 24,
+		text = 'stride_aligned',
+		selected = stride_aligned}
 
 	local cy = 80
 	local cx = 0
 
 	scroll = scroll - self.wheel_delta * 100
-	scroll = self:vscrollbar{id = 'vscroll', x = self.w - 16 - cx, y = cy, w = 16, h = self.h - cy,
-										i = scroll, size = total_h}
+	scroll = self:vscrollbar{
+		id = 'vscroll', x = self.w - 16 - cx, y = cy, w = 16, h = self.h - cy,
+		i = scroll, size = total_h}
+
 	total_h = 0
 
 	self.cr:rectangle(cx, cy, self.w - 16 - cx, self.h - cy)
@@ -124,20 +159,23 @@ function player:on_render(cr)
 
 				self:image{x = cx, y = cy, image = image}
 
-				self:text(string.format('scan %d', scan_number), 14, 'normal_fg', 'left', 'top',
-													cx, cy, w, h)
+				self:textbox(cx, cy, w, h,
+					string.format('scan %d', scan_number),
+					14, 'normal_fg', 'left', 'top')
 
-				self:text(image.file.format .. (image.format ~= image.file.format and ' -> ' .. image.format or ''),
-								14, 'normal_fg', 'center', 'center', cx, cy, w, h)
+				self:textbox(cx, cy, w, h,
+					image.file.format .. (image.format ~= image.file.format and
+						' -> ' .. image.format or ''),
+					14, 'normal_fg', 'center', 'center')
 
 				if image.partial then
-					self:text('partial', 14, 'normal_fg', 'right', 'top', cx, cy, w, h)
+					self:textbox(cx, cy, w, h, 'partial', 14, 'normal_fg', 'right', 'top')
 				end
 			else
 				self:rect(cx, cy, w, h, 'error_bg')
-				self:text(string.format('%s', err:match('^(.-)\n'):match(': ([^:]-)$')), 14,
-													'normal_fg', 'center', 'center',
-													cx, cy, w, h)
+				self:textbox(cx, cy, w, h,
+					string.format('%s', err:match('^(.-)\n'):match(': ([^:]-)$')),
+					14, 'normal_fg', 'center', 'center')
 			end
 
 			if last_scan then
@@ -152,7 +190,6 @@ function player:on_render(cr)
 					accept = glue.update({
 						stride_aligned = stride_aligned,
 						bottom_up = bottom_up,
-						top_down = not bottom_up
 					}, formats),
 					dct_method = dct_method,
 					fancy_upsampling = fancy_upsampling,
@@ -164,8 +201,6 @@ function player:on_render(cr)
 		end)
 
 		if not ok then
-			print(err)
-			os.exit(1)
 			render_scan(nil, true, 1, err)
 		end
 
