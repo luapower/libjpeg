@@ -1,5 +1,5 @@
---result of `cpp jpeglib.h` from libjpeg-turbo 1.2.1 (JPEG_LIB_VERSION = 62 in jconfig.h)
---made a few typedefs for useful structs and callbacks
+--result of `cpp jpeglib.h` from libjpeg-turbo 1.2.1 with JPEG_LIB_VERSION = 62.
+--added a few new typedefs for useful structs and callbacks.
 local ffi = require'ffi'
 require'stdio_h'
 
@@ -140,7 +140,6 @@ typedef struct jpeg_compress_struct {
 	double input_gamma;
 	int data_precision;
 	int num_components;
-	J_COLOR_SPACE jpeg_color_space;
 	J_COLOR_SPACE jpeg_color_space;
 	jpeg_component_info * comp_info;
 	JQUANT_TBL * quant_tbl_ptrs[4];
@@ -311,28 +310,32 @@ struct jpeg_progress_mgr {
 	int total_passes;
 };
 
-struct jpeg_destination_mgr {
+typedef void    (*jpeg_init_destination_callback)    (j_compress_ptr cinfo);
+typedef boolean (*jpeg_empty_output_buffer_callback) (j_compress_ptr cinfo);
+typedef void    (*jpeg_term_destination_callback)    (j_compress_ptr cinfo);
+
+typedef struct jpeg_destination_mgr {
 	JOCTET * next_output_byte;
 	size_t free_in_buffer;
-	void (*init_destination) (j_compress_ptr cinfo);
-	boolean (*empty_output_buffer) (j_compress_ptr cinfo);
-	void (*term_destination) (j_compress_ptr cinfo);
-};
+	jpeg_init_destination_callback     init_destination;
+	jpeg_empty_output_buffer_callback  empty_output_buffer;
+	jpeg_term_destination_callback     term_destination;
+} jpeg_destination_mgr;
 
-typedef void (*jpeg_init_source_callback) (j_decompress_ptr cinfo);
+typedef void    (*jpeg_init_source_callback)       (j_decompress_ptr cinfo);
 typedef boolean (*jpeg_fill_input_buffer_callback) (j_decompress_ptr cinfo);
-typedef void (*jpeg_skip_input_data_callback) (j_decompress_ptr cinfo, long num_bytes);
+typedef void    (*jpeg_skip_input_data_callback)   (j_decompress_ptr cinfo, long num_bytes);
 typedef boolean (*jpeg_resync_to_restart_callback) (j_decompress_ptr cinfo, int desired);
-typedef void (*jpeg_term_source_callback) (j_decompress_ptr cinfo);
+typedef void    (*jpeg_term_source_callback)       (j_decompress_ptr cinfo);
 
 typedef struct jpeg_source_mgr {
 	const JOCTET * next_input_byte;
 	size_t bytes_in_buffer;
-	jpeg_init_source_callback init_source;
-	jpeg_fill_input_buffer_callback fill_input_buffer;
-	jpeg_skip_input_data_callback skip_input_data;
-	jpeg_resync_to_restart_callback resync_to_restart;
-	jpeg_term_source_callback term_source;
+	jpeg_init_source_callback        init_source;
+	jpeg_fill_input_buffer_callback  fill_input_buffer;
+	jpeg_skip_input_data_callback    skip_input_data;
+	jpeg_resync_to_restart_callback  resync_to_restart;
+	jpeg_term_source_callback        term_source;
 } jpeg_source_mgr;
 
 typedef struct jvirt_sarray_control * jvirt_sarray_ptr;

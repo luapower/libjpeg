@@ -1,4 +1,7 @@
---libjpeg binding
+
+--libjpeg ffi binding.
+--Written by Cosmin Apreutesei. Public domain.
+
 local ffi = require'ffi'
 local bit = require'bit'
 local glue = require'glue'
@@ -169,16 +172,28 @@ local function load(t)
 		finally(function() C.jpeg_destroy_decompress(cinfo) end)
 
 		--setup source
+
+		if type(t) == 'string' then
+			t = {path = t}
+		elseif type(t) == 'function' then
+			t = {read = t}
+		end
+
 		if t.stream then
+
 			C.jpeg_stdio_src(cinfo, t.stream)
+
 		elseif t.path then
+
 			local file = stdio.fopen(t.path, 'rb')
 			finally(function()
 				C.jpeg_stdio_src(cinfo, nil)
 				file:close()
 			end)
 			C.jpeg_stdio_src(cinfo, file)
+
 		elseif t.string or t.cdata or t.read then
+
 			local read = t.read
 				or t.string and one_shot_reader(t.string)
 				or t.cdata  and one_shot_reader(t.cdata, t.size)
@@ -186,7 +201,7 @@ local function load(t)
 			--create source callbacks
 			local cb = {}
 			cb.init_source = glue.pass
-			cb.term_source = glue.pass
+			cb.term_source = t.finish or glue.pass
 			cb.resync_to_restart = C.jpeg_resync_to_restart
 
 			local partial_loading = t.partial_loading ~= false
@@ -264,8 +279,8 @@ local function load(t)
 		end
 
 		--find the best accepted output pixel format
-		assert(img.file.format, 'unknown pixel format')
-		assert(cinfo.num_components == channel_count[img.file.format], 'num comp')
+		assert(img.file.format, 'invalid pixel format')
+		assert(cinfo.num_components == channel_count[img.file.format])
 		img.format = best_format(img.file.format, t.accept)
 
 		--set decompression options
@@ -363,29 +378,88 @@ local function save(t)
 		finally(function() C.jpeg_destroy_compress(cinfo) end)
 
 		--setup destination.
+		local ret
+
 		if t.stream then
+
 			C.jpeg_stdio_dest(cinfo, t.stream)
+
 		elseif t.path then
+
 			local file = stdio.fopen(t.path, 'wb')
 			finally(function()
 				C.jpeg_stdio_dest(cinfo, nil)
 				file:close()
 			end)
 			C.jpeg_stdio_dest(cinfo, file)
-		elseif t.string or t.cdata or t.write then
-			--TODO:
+
 		else
-			error'destination missing'
+
+			--create the write and finish functions.
+			local write, finish
+			local user_finish = t.finish or glue.pass
+			if t.write then --sink output
+				write = t.write
+				finish = user_finish
+			elseif t.chunks then --table output
+				function write(buf, sz)
+					table.insert(t.chunks, ffi.string(buf, sz))
+				end
+				function finish()
+					ret = t.chunks
+					user_finish()
+				end
+			else --string output
+				local chunks = {}
+				function write(buf, sz)
+					table.insert(chunks, ffi.string(buf, sz))
+				end
+				function finish()
+					ret = table.concat(chunks)
+					user_finish()
+				end
+			end
+
+			--create the dest. buffer.
+			local sz = 4096
+			local buf = ffi.new('char[?]', sz)
+
+			--create destination callbacks.
+			local cb = {}
+
+			function cb.init_destination(cinfo)
+				cinfo.dest.next_output_byte = buf
+				cinfo.dest.free_in_buffer = sz
+			end
+
+			function cb.term_destination(cinfo)
+				write(buf, sz - cinfo.dest.free_in_buffer)
+				finish()
+			end
+
+			function cb.empty_output_buffer(cinfo)
+				write(buf, sz)
+				cb.init_destination(cinfo)
+				return true
+			end
+
+			--create a destination manager and set it up.
+			local mgr, free_mgr = callback_manager('jpeg_destination_mgr', cb)
+			cinfo.dest = mgr
+			finally(function() --the finalizer anchors mgr through free_mgr!
+				cinfo.dest = nil
+				free_mgr()
+			end)
+
 		end
 
 		--set source format.
 		cinfo.image_width = t.bitmap.w
 		cinfo.image_height = t.bitmap.h
-		local channels =
-			assert(t.bitmap.format:match'^[a-z]+', 'invalid source format')
-		cinfo.input_components = #channels
 		cinfo.in_color_space =
 			assert(color_spaces[t.bitmap.format], 'invalid source format')
+		cinfo.input_components =
+			assert(channel_count[t.bitmap.format], 'invalid source format')
 
 		--set the default compression options based on in_color_space.
 		C.jpeg_set_defaults(cinfo)
@@ -402,17 +476,14 @@ local function save(t)
 			C.jpeg_simple_progression(cinfo)
 		end
 		if t.dct_method then
-			cinfo.dct_method = assert(dct_methods[t.dct_method], 'invalid dct_method')
+			cinfo.dct_method =
+				assert(dct_methods[t.dct_method], 'invalid dct_method')
 		end
 		if t.optimize_coding then
 			cinfo.optimize_coding = t.optimize_coding
 		end
 		if t.smoothing then
 			cinfo.smoothing_factor = t.smoothing
-		end
-		if t.w or t.h then
-			cinfo.jpeg_width = t.w or cinfo.image_width
-			cinfo.jpeg_height = t.h or cinfo.image_height
 		end
 
 		--start the compression cycle.
@@ -428,22 +499,20 @@ local function save(t)
 		--finish the compression, optionally adding additional scans.
 		C.jpeg_finish_compress(cinfo)
 
-		--TODO: return string, cdata...
+		return ret
 	end)
 end
 
+jit.off(save, true) --can't call error() from callbacks called from C
 
 if not ... then
-
-	local img = load{path = 'media/jpeg/progressive.jpg'}
-
-	save{bitmap = img, path = 'media/jpeg/progressive2.jpg'}
-
-	--require'libjpeg_demo'
+	require'libjpeg_test'
+	require'libjpeg_demo'
 end
 
 return {
 	load = load,
+	save = save,
 	C = C,
 }
 
