@@ -71,17 +71,20 @@ Use [bitmap] to further convert the image if necessary.
 
 For more info on the decoding process and options read the [libjpeg-turbo doc].
 
-### 3. The returned image:
+### 3. The return value:
 
-  * `file`: a table describing file attributes:
+The return value is a [bitmap] with extra fields:
+
+  * `file`: a table describing the source file, with the following attributes:
 	  * `w`, `h`, `format`, `progressive`, `jfif`, `adobe`.
-	  * note: `format` is missing for unknown formats.
-  * `format`, `bottom_up`, `stride`, `data`, `size`, `w`, `h`: output image
-  format, dimensions and pixel data.
-	  * the number of bits per channel is always 8.
-	  * these fields are not present with the `headers_only` option.
   * `partial`: true if the image was found to be truncated and it was
   partially loaded.
+
+NOTE:
+
+  * the number of bits per channel in the output bitmap is always 8.
+  * the bitmap fields are not present with the `header_only` option.
+  * unknown JPEG formats are loaded but the `format` field is missing.
 
 
 ## `libjpeg.save(options_t) -> string | chunks_t | nil`
