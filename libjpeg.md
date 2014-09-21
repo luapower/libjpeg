@@ -1,11 +1,12 @@
 ---
 project: libjpeg
-tagline: JPEG reader
+tagline: JPEG encoding & decoding
 ---
 
 ## `local libjpeg = require'libjpeg'`
 
-A ffi binding for [libjpeg-turbo], a fast and complete JPEG codec.
+A ffi binding for the [libjpeg][libjpeg-home] 6.2 API.
+Comes with [libjpeg-turbo] binaries.
 
 ## Features
 
@@ -116,19 +117,20 @@ If no output option is specified, the jpeg binary is returned as a Lua string.
 
 ## Limitations
 
-  * loading one scan line at a time (easy).
-  * saving one scan line at a time (easy).
+  * no support for loading and saving huge images, i.e. working with
+  a few scanlines at a time (easy).
   * jit is turned off because we can't call error() from a ffi callback
   called from C; and yet libjpeg says that we must not return control to
   C on errors, and the only way to do that is to call error().
   * the read callback cannot yield since it is called from C code.
   This means that reading data with coroutine-based socket schedulers
-  is not an option. Is there a way around it that doesn't involve threads?
+  is not an option. The workaround is to either bind the suspended I/O
+  mode of libjpeg (easy), or to use threads and locking.
 
 
 ----
 See also: [nanojpeg](nanojpeg.html)
 
-
+[libjpeg-home]:       http://libjpeg.sourceforge.net/
 [libjpeg-turbo]:      http://www.libjpeg-turbo.org/
 [libjpeg-turbo doc]:  http://sourceforge.net/p/libjpeg-turbo/code/HEAD/tree/trunk/libjpeg.txt
