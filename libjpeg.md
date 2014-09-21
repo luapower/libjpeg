@@ -111,6 +111,7 @@ If no output option is specified, the jpeg binary is returned as a Lua string.
   * `dct_method`: 'accurate', 'fast', 'float' (default is 'accurate').
   * `optimize_coding`: optimize huffmann tables.
   * `smoothing`: 0..100 range. smoothing factor.
+  * `bufsize`: internal buffer size (default is 4096).
 
 
 ## Limitations

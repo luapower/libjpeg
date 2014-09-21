@@ -421,7 +421,7 @@ local function save(t)
 			end
 
 			--create the dest. buffer.
-			local sz = 4096
+			local sz = t.bufsize or 4096
 			local buf = ffi.new('char[?]', sz)
 
 			--create destination callbacks.
