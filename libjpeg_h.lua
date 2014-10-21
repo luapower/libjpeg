@@ -3,6 +3,12 @@
 local ffi = require'ffi'
 require'stdio_h'
 
+if ffi.os == 'Windows' then
+	ffi.cdef'typedef unsigned char boolean;' --can you believe it?
+else
+	ffi.cdef'typedef int boolean;'
+end
+
 ffi.cdef[[
 enum {
 	JPEG_SUSPENDED,     /* Suspended due to lack of input data */
@@ -11,7 +17,6 @@ enum {
 	JPEG_ROW_COMPLETED, /* Completed one iMCU row */
 	JPEG_SCAN_COMPLETED /* Completed last iMCU row of a scan */
 };
-typedef unsigned char boolean;
 typedef short INT16;
 typedef signed int INT32;
 typedef unsigned char JSAMPLE;
