@@ -143,7 +143,7 @@ local function jpeg_err(t, finally)
 end
 
 --create a top-down or bottom-up array of rows pointing to a bitmap buffer.
-local function jpeg_rows(h, bottom_up, data, stride)
+local function rows_buffer(h, bottom_up, data, stride)
 	local rows = ffi.new('uint8_t*[?]', h)
 	if bottom_up then
 		for i=0,h-1 do
@@ -160,6 +160,13 @@ end
 local function load(t)
 	return glue.fcall(function(finally)
 
+		--normalize args
+		if type(t) == 'string' then
+			t = {path = t}
+		elseif type(t) == 'function' then
+			t = {read = t}
+		end
+
 		--create the state object and output image
 		local cinfo = ffi.new'jpeg_decompress_struct'
 		local img = {}
@@ -168,17 +175,12 @@ local function load(t)
 		cinfo.err = jpeg_err(t, finally)
 
 		--init state
-		C.jpeg_CreateDecompress(cinfo, LIBJPEG_VERSION, ffi.sizeof(cinfo))
+		C.jpeg_CreateDecompress(cinfo,
+			t.lib_version or LIBJPEG_VERSION,
+			ffi.sizeof(cinfo))
 		finally(function() C.jpeg_destroy_decompress(cinfo) end)
 
 		--setup source
-
-		if type(t) == 'string' then
-			t = {path = t}
-		elseif type(t) == 'function' then
-			t = {read = t}
-		end
-
 		if t.stream then
 
 			C.jpeg_stdio_src(cinfo, t.stream)
@@ -194,6 +196,7 @@ local function load(t)
 
 		elseif t.string or t.cdata or t.read then
 
+			--wrap cdata and string into a one-shot stream reader.
 			local read = t.read
 				or t.string and one_shot_reader(t.string)
 				or t.cdata  and one_shot_reader(t.cdata, t.size)
@@ -312,7 +315,7 @@ local function load(t)
 		img.data = ffi.new('uint8_t[?]', img.size)
 		img.bottom_up = t.accept and t.accept.bottom_up
 
-		local rows = jpeg_rows(img.h, img.bottom_up, img.data, img.stride)
+		local rows = rows_buffer(img.h, img.bottom_up, img.data, img.stride)
 
 		--finally, decompress the image
 		local function render_scan(last_scan, scan_number, multiple_scans)
@@ -374,7 +377,9 @@ local function save(t)
 		cinfo.err = jpeg_err(t, finally)
 
 		--init state.
-		C.jpeg_CreateCompress(cinfo, LIBJPEG_VERSION, ffi.sizeof(cinfo))
+		C.jpeg_CreateCompress(cinfo,
+			t.lib_version or LIBJPEG_VERSION,
+			ffi.sizeof(cinfo))
 		finally(function() C.jpeg_destroy_compress(cinfo) end)
 
 		--setup destination.
@@ -491,7 +496,7 @@ local function save(t)
 
 		--make row pointers from the bitmap buffer.
 		local bmp = t.bitmap
-		local rows = jpeg_rows(bmp.h, bmp.bottom_up, bmp.data, bmp.stride)
+		local rows = rows_buffer(bmp.h, bmp.bottom_up, bmp.data, bmp.stride)
 
 		--compress rows.
 		C.jpeg_write_scanlines(cinfo, rows, bmp.h)
