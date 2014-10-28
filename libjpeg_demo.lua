@@ -5,8 +5,6 @@ local glue = require'glue'
 local ffi = require'ffi'
 local stdio = require'stdio'
 
-player.continuous_rendering = true
-
 require'unit'
 local files = {}
 glue.extend(files, dir'media/jpeg/test*')
