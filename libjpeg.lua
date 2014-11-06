@@ -19,6 +19,7 @@ local formats = {
 	[C.JCS_CMYK]     = 'cmyk8',
 	[C.JCS_YCCK]     = 'ycck8',
 	[C.JCS_RGB]      = 'rgb8',
+	--libjpeg-turbo only
 	[C.JCS_EXT_RGB]  = 'rgb8',
 	[C.JCS_EXT_BGR]  = 'bgr8',
 	[C.JCS_EXT_RGBX] = 'rgbx8',

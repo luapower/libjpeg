@@ -9,5 +9,5 @@ url=http://downloads.sourceforge.net/project/libjpeg-turbo/$ver/$file.tar.gz
 	which wget >/dev/null || { echo "you need wget or download $url here"; exit 1; }
 	wget $url
 }
-tar xvfz $file.tar.gz
+tar xvfz $file.tar.gz && rm $file.tar.gz
 mv $file src

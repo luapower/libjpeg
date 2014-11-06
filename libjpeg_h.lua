@@ -93,6 +93,7 @@ typedef enum {
 	JCS_YCbCr,
 	JCS_CMYK,
 	JCS_YCCK,
+	/* libjpeg-turbo only */
 	JCS_EXT_RGB,
 	JCS_EXT_RGBX,
 	JCS_EXT_BGR,
