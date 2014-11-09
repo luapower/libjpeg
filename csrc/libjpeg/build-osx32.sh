@@ -1,9 +1,1 @@
-./get-it.sh
-cd src
-./configure --host i686-apple-darwin NASM=/opt/local/bin/nasm \
-    CFLAGS="-O3 -m32 -mmacosx-version-min=10.6" LDFLAGS="-m32 -mmacosx-version-min=10.6"
-make clean
-make
-cp -f ".libs/$(readlink .libs/libjpeg.dylib)" ../../../bin/osx32/libjpeg.dylib
-install_name_tool -id @loader_path/libjpeg.dylib ../../../bin/osx32/libjpeg.dylib
-make clean
+P=osx32 M=-m32 ./build-osx.sh
