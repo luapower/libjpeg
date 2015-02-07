@@ -132,7 +132,7 @@ If no output option is specified, the jpeg binary is returned as a Lua string.
 
 
 ----
-See also: [nanojpeg](nanojpeg.html)
+See also: [nanojpeg]
 
 [libjpeg-home]:       http://libjpeg.sourceforge.net/
 [libjpeg-turbo]:      http://www.libjpeg-turbo.org/
