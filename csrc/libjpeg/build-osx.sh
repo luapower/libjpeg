@@ -8,6 +8,6 @@ make clean
 	LDFLAGS="$M -mmacosx-version-min=10.6"
 make
 cp -f .libs/libjpeg.dylib ../../../bin/$P/
-install_name_tool -id @loader_path/libjpeg.dylib ../../../bin/$P/libjpeg.dylib
+install_name_tool -id @rpath/libjpeg.dylib ../../../bin/$P/libjpeg.dylib
 cp -f .libs/libjpeg.a ../../../bin/$P/
 make clean
