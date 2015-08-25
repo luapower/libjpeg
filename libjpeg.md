@@ -1,5 +1,4 @@
 ---
-project: libjpeg
 tagline: JPEG encoding & decoding
 ---
 
