@@ -10,6 +10,7 @@ Comes with [libjpeg-turbo] binaries.
 ## Features
 
   * progressive loading
+  * yielding from the reader function
   * partial loading
   * fractional scaling
   * multiple pixel formats:
@@ -20,31 +21,21 @@ Comes with [libjpeg-turbo] binaries.
 
 ## Limitations
 
+  * jit is turned off because we need to call error() from a ffi callback.
   * no loading and saving huge images, i.e. working with a few scanlines
   at a time (easy).
-  * jit is turned off because we can't call error() from a ffi callback
-  called from C; and yet we must not return control to libjpeg on errors,
-  and the only way to do that is to call error().
-  * the read callback cannot yield since it is called from C code.
-  This means that reading data with coroutine-based socket schedulers
-  is not an option. The workaround is to either bind the suspended I/O
-  mode of libjpeg (easy), or to use threads and locking.
 
 ## API
 
-### `libjpeg.load(options_t | filename | read) -> image`
+### `libjpeg.open(options_t | read) -> image`
 
 Read and decode a JPEG image. `options_t` is a table containing at least
-the data source and possibly other options.
+the read function and possibly other options.
 
-#### 1. The image source:
+#### 1. The read function:
 
-  * `path`: read data from a file.
-  * `string`: read data from a string.
-  * `cdata`, `size`: read data from a buffer of specified size.
-  * `stream`: read data from an opened `FILE *` stream.
-  * `read`: read data from a reader function of the form:
-		`read() -> cdata, size | string | nil`
+  * it has the form `read(buf, size) -> readsize`, it can yield and it must
+  signal I/O errors by raising an error.
 
 #### 2. Decoding options:
 
@@ -67,7 +58,6 @@ method.
 of early progression stages for progressive JPEGs.
   * `partial_loading`: true/false (default is true); display broken images
 partially or break with an error.
-  * `header_only`: do not decode the image; return only the image header fields.
   * `render_scan`: a function to be called as
   `render_scan(image, is_last_scan, scan_number)` for each progressive scan
   of a multi-scan JPEG. It can used to implement progressive display of images.
@@ -76,6 +66,11 @@ partially or break with an error.
     where `scan_number` is the scan number that was supposed to be rendering
     next and `error` the error message.
   * `warning`: a function to be called as `warning(msg, level)` on non-fatal errors.
+  * `read_buffer`: optional, read buffer to use.
+  * `read_buffer_size`: read buffer size.
+  * `suspended_io`: use suspended I/O, i.e. yieldable callbacks (default is true).
+  note that arithmetic decoding doesn't work with suspended I/O
+  (browsers don't support arithmetic decoding either).
 
 > __NOTE__: Not all conversions are possible with libjpeg-turbo,
 so always check the image's `format` field to get the actual format.
