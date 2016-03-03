@@ -11,10 +11,10 @@ Comes with [libjpeg-turbo] binaries.
 
 ## Output pixel formats
 
-	 * rgb8, bgr8, rgba8, bgra8, argb8, abgr8
-    * rgbx8, bgrx8, xrgb8, xbgr8
-    * g8, ga8, ag8
-    * ycc8, ycck8, cmyk8
+* rgb8, bgr8, rgba8, bgra8, argb8, abgr8
+* rgbx8, bgrx8, xrgb8, xbgr8
+* g8, ga8, ag8
+* ycc8, ycck8, cmyk8
 
 ## API
 
