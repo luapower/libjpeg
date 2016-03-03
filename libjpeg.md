@@ -9,13 +9,6 @@ Supports progressive loading, yielding from the reader function,
 partial loading, fractional scaling and multiple pixel formats.
 Comes with [libjpeg-turbo] binaries.
 
-## Output pixel formats
-
-* rgb8, bgr8, rgba8, bgra8, argb8, abgr8
-* rgbx8, bgrx8, xrgb8, xbgr8
-* g8, ga8, ag8
-* ycc8, ycck8, cmyk8
-
 ## API
 
 ### `libjpeg.open(options_t | read) -> image`
@@ -31,27 +24,28 @@ the read function and possibly other options.
 #### 2. Decoding options:
 
   * `accept.<pixel_format>: true/false` specify one or more accepted
-pixel formats (see above).
+    pixel formats: rgb8, bgr8, rgba8, bgra8, argb8, abgr8, rgbx8, bgrx8, xrgb8,
+    xbgr8, g8, ga8, ag8, ycc8, ycck8, cmyk8.
   * `accept.top_down`: true/false (default is true)
   * `accept.bottom_up`: true/false
   * `accept.padded`: true/false (default is false) - specify that the row
-stride should be a multiple of 4.
+    stride should be a multiple of 4.
   * `scale_num`, `scale_denom`: scale down the image by the fraction
-scale_num/scale_denom. Currently, the only supported scaling ratios are
-M/8 with all M from 1 to 16, or any reduced fraction thereof
-(such as 1/2, 3/4, etc.) Smaller scaling ratios permit significantly
-faster decoding since fewer pixels need be processed and a simpler
-IDCT method can be used.
+    scale_num/scale_denom. Currently, the only supported scaling ratios are
+    M/8 with all M from 1 to 16, or any reduced fraction thereof
+    (such as 1/2, 3/4, etc.) Smaller scaling ratios permit significantly
+    faster decoding since fewer pixels need be processed and a simpler
+    IDCT method can be used.
   * `dct_method`: 'accurate', 'fast', 'float' (default is 'accurate')
   * `fancy_upsampling`: true/false (default is false); use a fancier upsampling
-method.
+    method.
   * `block_smoothing`: true/false (default is false); smooth out large pixels
-of early progression stages for progressive JPEGs.
+    of early progression stages for progressive JPEGs.
   * `partial_loading`: true/false (default is true); display broken images
-partially or break with an error.
+    partially or break with an error.
   * `render_scan`: a function to be called as
-  `render_scan(image, is_last_scan, scan_number)` for each progressive scan
-  of a multi-scan JPEG. It can used to implement progressive display of images.
+    `render_scan(image, is_last_scan, scan_number)` for each progressive scan
+    of a multi-scan JPEG. It can used to implement progressive display of images.
     * also called once for single-scan images.
     * also called on error, as `render_scan(nil, true, scan_number, error)`,
     where `scan_number` is the scan number that was supposed to be rendering
@@ -60,8 +54,8 @@ partially or break with an error.
   * `read_buffer`: optional, read buffer to use.
   * `read_buffer_size`: read buffer size.
   * `suspended_io`: use suspended I/O, i.e. yieldable callbacks (default is true).
-  note that arithmetic decoding doesn't work with suspended I/O
-  (browsers don't support arithmetic decoding either).
+    note that arithmetic decoding doesn't work with suspended I/O
+    (browsers don't support arithmetic decoding either).
 
 > __NOTE__: Not all conversions are possible with libjpeg-turbo,
 so always check the image's `format` field to get the actual format.
