@@ -5,25 +5,16 @@ tagline: JPEG encoding & decoding
 ## `local libjpeg = require'libjpeg'`
 
 A ffi binding for the [libjpeg][libjpeg-home] 6.2 API.
+Supports progressive loading, yielding from the reader function,
+partial loading, fractional scaling and multiple pixel formats.
 Comes with [libjpeg-turbo] binaries.
 
-## Features
+## Output pixel formats
 
-  * progressive loading
-  * yielding from the reader function
-  * partial loading
-  * fractional scaling
-  * multiple pixel formats:
-    * rgb8, bgr8, rgba8, bgra8, argb8, abgr8
+	 * rgb8, bgr8, rgba8, bgra8, argb8, abgr8
     * rgbx8, bgrx8, xrgb8, xbgr8
     * g8, ga8, ag8
     * ycc8, ycck8, cmyk8
-
-## Limitations
-
-  * jit is turned off because we need to call error() from a ffi callback.
-  * no loading and saving huge images, i.e. working with a few scanlines
-  at a time (easy).
 
 ## API
 
