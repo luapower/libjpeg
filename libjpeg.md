@@ -2,7 +2,7 @@
 tagline: JPEG encoding & decoding
 ---
 
-## `local libjpeg = require'libjpeg'`
+## `local jpeg = require'libjpeg'`
 
 A ffi binding for the [libjpeg][libjpeg-home] 6.2 API.
 Supports progressive loading, yielding from the reader function,
@@ -11,55 +11,86 @@ Comes with [libjpeg-turbo] binaries.
 
 ## API
 
-### `libjpeg.open(options_t | read) -> image`
+------------------------------------------------- -------------------------------------------------
+`jpeg.open(t|read) -> jpg|nil,err`                open a JPEG file and read it's header
+`jpg.w`                                           width
+`jpg.h`                                           height
+`jpg.format`                                      pixel format
+`jpg.progressive`                                 has multiple scans
+`jpg:accepts(fmt) -> true|false`                  check if pixel format is accepted for output
+`jpg:accepts({fmt -> true}) -> {fmt -> true}`     check which pixel formats are accepted for output
+`jpg:dimensions(t) -> w, h, stride`               output dimensions for decompression options
+`jpg:load(bmp[, x, y]) -> bmp | nil,err`          load/paint the pixels into a given [bitmap]
+`jpg:load(format, ...) -> bmp | nil,err`          load the pixels into a new bitmap
+`jpg:rows(bmp | format,...) -> iter() -> i, bmp`  iterate the rows over a 1-row bitmap
+`jpg:load(t) -> bmp|nil,err`                      load the pixels into a [bitmap]
+`jpg:free()`                                      free the jpeg object
+`jpeg.save(bmp, write) -> ok|nil,err`             save a [bitmap] using a write function
+------------------------------------------------- -------------------------------------------------
 
-Read and decode a JPEG image. `options_t` is a table containing at least
-the read function and possibly other options.
+### `libjpeg.open(t|read) -> image`
 
-#### 1. The read function:
+Open a JPEG file using a `read(buf, size) -> readsize` function to get
+the bytes. The read function should accept any size >= 0 and it should
+raise an error if it can't read all the bytes, except on EOF when it
+should return 0.
 
-  * it has the form `read(buf, size) -> readsize`, it can yield and it must
-  signal I/O errors by raising an error.
+If given instead, `t` is a table containing:
 
-#### 2. Decoding options:
+  * `read` (required): the read function.
+  * `partial_loading` (true): display broken images partially or return an error.
+  * `suspended_io` (true): allow yielding from the read function.
+    note that arithmetic decoding doesn't work with suspended I/O
+    (browsers don't support arithmetic decoding either).
+  * `read_buffer_size`: the size of the read buffer.
+  * `read_buffer`: read buffer to use.
+  * `warning`: a function to be called as `warning(msg, level)` on non-fatal errors.
 
-  * `accept.<pixel_format>: true/false` specify one or more accepted
-    pixel formats: rgb8, bgr8, rgba8, bgra8, argb8, abgr8, rgbx8, bgrx8, xrgb8,
-    xbgr8, g8, ga8, ag8, ycc8, ycck8, cmyk8.
-  * `accept.top_down`: true/false (default is true)
-  * `accept.bottom_up`: true/false
-  * `accept.padded`: true/false (default is false) - specify that the row
-    stride should be a multiple of 4.
+### `jpg:accepts({fmt -> true} | fmt) -> fmt|nil`
+
+Given a table of accepted pixel formats, return the best format that the image
+can be loaded into, if any. Possible formats: rgb8, bgr8, rgba8, bgra8,
+argb8, abgr8, rgbx8, bgrx8, xrgb8, xbgr8, g8, ga8, ag8, ycc8, ycck8, cmyk8.
+
+### `jpg:dimensions(t) -> w, h, stride`
+
+Return output image dimensions for a certain set of decompression options:
+
+  * `format`, `stride_aligned`, `stride`: bitmap format and/or stride.
   * `scale_num`, `scale_denom`: scale down the image by the fraction
     scale_num/scale_denom. Currently, the only supported scaling ratios are
     M/8 with all M from 1 to 16, or any reduced fraction thereof
-    (such as 1/2, 3/4, etc.) Smaller scaling ratios permit significantly
+    (such as 1/2, 3/4, etc.). Smaller scaling ratios permit significantly
     faster decoding since fewer pixels need be processed and a simpler
     IDCT method can be used.
-  * `dct_method`: 'accurate', 'fast', 'float' (default is 'accurate')
-  * `fancy_upsampling`: true/false (default is false); use a fancier upsampling
-    method.
-  * `block_smoothing`: true/false (default is false); smooth out large pixels
-    of early progression stages for progressive JPEGs.
-  * `partial_loading`: true/false (default is true); display broken images
-    partially or break with an error.
-  * `render_scan`: a function to be called as
-    `render_scan(image, is_last_scan, scan_number)` for each progressive scan
-    of a multi-scan JPEG. It can used to implement progressive display of images.
-    * also called once for single-scan images.
-    * also called on error, as `render_scan(nil, true, scan_number, error)`,
-    where `scan_number` is the scan number that was supposed to be rendering
-    next and `error` the error message.
-  * `warning`: a function to be called as `warning(msg, level)` on non-fatal errors.
-  * `read_buffer`: optional, read buffer to use.
-  * `read_buffer_size`: read buffer size.
-  * `suspended_io`: use suspended I/O, i.e. yieldable callbacks (default is true).
-    note that arithmetic decoding doesn't work with suspended I/O
-    (browsers don't support arithmetic decoding either).
+  * `dct_method`: 'accurate' (default), 'fast', 'float'
+  * `fancy_upsampling` (false): use a fancier upsampling method.
+  * `block_smoothing` (false): smooth out large pixels of early progression
+    stages for progressive JPEGs.
 
-> __NOTE__: Not all conversions are possible with libjpeg-turbo,
-so always check the image's `format` field to get the actual format.
-Use [bitmap] to further convert the image if necessary.
+### `jpg:bitmap(t) -> bmp`
+
+Make a bitmap for a certain set of decompression options. Options can be
+all the options above plus:
+
+  * `h`: bitmap height.
+  * `alloc`: custom `alloc(size) -> buf` function.
+
+### `jpg:decode([scan_num, ]t)`
+
+Load and decode (a scan of) the image into a compatible bitmap. Options
+can be all the options above plus:
+
+### `jpg:more() -> status | nil`
+
+Load data in advance of decoding and return on scan and row boundaries.
+Status can be 'start_scan'`, 'end_scan', 'end_row' or nil for EOF.
+
+* any of the options that the `dimensions()` function accepts.
+  * `render_scan`: a function to be called as
+    `render_scan(image, is_last_scan, scan_number)`; called once if the image
+	 is single-scan; called once for each progressive scan if the image is
+	 multi-scan.
 
 For more info on the decoding process and options read the [libjpeg-turbo doc].
 

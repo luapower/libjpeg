@@ -108,12 +108,12 @@ function player:on_render(cr)
 	for i,filename in ipairs(files) do
 
 		local rendered_once
-		local function render_scan(image, last_scan, scan_number, err)
+		local function render_scan(bmp, last_scan, scan_number, err)
 
 			--if not last_scan then return end
 			rendered_once = true
 			local w, h = 300, 100
-			if image then w, h = image.w, image.h end
+			if bmp then w, h = bmp.w, bmp.h end
 
 			if cx + w + 10 + 16 > self.w then
 				cx = 0
@@ -123,16 +123,16 @@ function player:on_render(cr)
 				maxh = nil
 			end
 
-			if image then
+			if bmp then
 
-				self:image{x = cx, y = cy, image = image}
+				self:image{x = cx, y = cy, image = bmp}
 
 				self:textbox(cx, cy, w, h,
 					string.format('scan %d', scan_number),
 					14, 'normal_fg', 'left', 'top')
 
 				self:textbox(cx, cy, w, h,
-					image.file.format .. (image.format ~= image.file.format and
+					bmp.format .. (bmp.format ~= bmp.format and
 						' -> ' .. image.format or ''),
 					14, 'normal_fg', 'center', 'center')
 
@@ -160,28 +160,29 @@ function player:on_render(cr)
 			left = left - readsz
 			return readsz
 		end
-		local img, err = libjpeg.open{
+		local jpg, err = libjpeg.open{
 			read = read,
-			accept = glue.update({
-				stride_aligned = stride_aligned,
-				bottom_up = bottom_up,
-			}, formats),
-			dct_method = dct_method,
-			fancy_upsampling = fancy_upsampling,
-			block_smoothing = block_smoothing,
 			partial_loading = partial,
 			suspended_io = suspended_io,
 		}
-		if not img then err = 'open '..err end
-		local ok
-		if img then
-			ok, err = img:load(render_scan)
+		if not jpg then err = 'open '..err end
+		local bmp
+		if jpg then
+			bmp, err = jpg:load{
+				format = jpg:best_format(formats),
+				stride_aligned = stride_aligned,
+				bottom_up = bottom_up,
+				dct_method = dct_method,
+				fancy_upsampling = fancy_upsampling,
+				block_smoothing = block_smoothing,
+				render_scan = render_scan,
+			}
 		end
-		if not ok then
+		if not bmp then
 			render_scan(nil, true, 1, err)
 		end
-		if img then
-			img:free()
+		if jpg then
+			jpg:free()
 		end
 		f:close()
 	end

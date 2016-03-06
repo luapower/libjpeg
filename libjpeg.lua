@@ -47,30 +47,28 @@ local channel_count = {
 
 local color_spaces = glue.index(formats)
 
---all conversions that libjpeg implements, in order of preference.
---{source = {dest1, ...}}
+--all conversions that libjpeg implements: {source -> {dest -> _}}
 local conversions = {
-	ycc8 = {'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8', 'abgr8', 'rgbx8',
-		'bgrx8', 'xrgb8', 'xbgr8', 'g8'},
-	g8 = {'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8', 'abgr8', 'rgbx8', 'bgrx8',
-		'xrgb8', 'xbgr8'},
-	ycck8 = {'cmyk8'},
+	ycc8 = glue.index{'ycc8', 'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8',
+		'abgr8', 'rgbx8', 'bgrx8', 'xrgb8', 'xbgr8', 'g8'},
+	g8 = glue.index{'g8', 'rgb8', 'bgr8', 'rgba8', 'bgra8', 'argb8', 'abgr8',
+		'rgbx8', 'bgrx8', 'xrgb8', 'xbgr8'},
+	ycck8 = glue.index{'ycck8', 'cmyk8'},
 }
 
---given current pixel format of an image and an accept table,
---choose the best accepted pixel format.
-local function best_format(format, accept)
-	if not accept or accept[format] then --no preference or source format accepted
-		return format
-	end
-	if conversions[format] then
-		for _,dformat in ipairs(conversions[format]) do
-			if accept[dformat] then --convertible to the best accepted format
-				return dformat
+local function accepts(src_format, dst_formats)
+	local t = assert(conversions[src_format], 'invalid source format')
+	if type(dst_formats) == 'string' then
+		return t[dst_formats] and true or false
+	else
+		local dt = {}
+		for fmt in pairs(dst_formats) do
+			if t[fmt] then
+				dt[fmt] = true
 			end
 		end
+		return dt
 	end
-	return format --not convertible
 end
 
 --given a row stride, return the next larger stride that is a multiple of 4.
@@ -174,9 +172,9 @@ local function open(t)
 
 	--create the state object and output image
 	local cinfo = ffi.new'jpeg_decompress_struct'
-	local img = {}
+	local jpg = {}
 
-	img.free = free
+	jpg.free = free
 
 	--setup error handling
 	local jerr, jerr_free = jpeg_err(t)
@@ -204,7 +202,7 @@ local function open(t)
 
 	local function fill_input_buffer()
 		if bytes_to_skip > 0 then
-			read(nil, bytes_to_skip)
+			assert(read(nil, bytes_to_skip) == bytes_to_skip, 'eof')
 			bytes_to_skip = 0
 		end
 		local ofs = tonumber(cinfo.src.bytes_in_buffer)
@@ -221,7 +219,7 @@ local function open(t)
 			readsz = #JPEG_EOI
 			assert(readsz <= sz, 'buffer too small')
 			ffi.copy(buf + ofs, JPEG_EOI)
-			img.partial = true
+			jpg.partial = true
 		end
 		cinfo.src.bytes_in_buffer = ofs + readsz
 	end
@@ -240,7 +238,7 @@ local function open(t)
 				readsz = #JPEG_EOI
 				assert(readsz <= sz, 'buffer too small')
 				ffi.copy(buf, JPEG_EOI)
-				img.partial = true
+				jpg.partial = true
 			end
 			cinfo.src.bytes_in_buffer = readsz
 			cinfo.src.next_input_byte = buf
@@ -279,19 +277,40 @@ local function open(t)
 	cinfo.src.bytes_in_buffer = 0
 	cinfo.src.next_input_byte = nil
 
-	local function load_header()
+	local started
+
+	local function start()
+		if started then return end
+		started = true
+		while C.jpeg_start_decompress(cinfo) == 0 do
+			fill_input_buffer()
+		end
+	end
+	jit.off(start)
+
+	local function finish()
+		if not started then return end
+		started = false
+		while C.jpeg_finish_decompress(cinfo) == 0 do
+			fill_input_buffer()
+		end
+	end
+	jit.off(finish)
+
+	local function header()
+		finish()
 
 		while C.jpeg_read_header(cinfo, 1) == C.JPEG_SUSPENDED do
 			fill_input_buffer()
 		end
 
-		img.file = {}
-		img.file.w = cinfo.image_width
-		img.file.h = cinfo.image_height
-		img.file.format = formats[tonumber(cinfo.jpeg_color_space)]
-		img.file.progressive = C.jpeg_has_multiple_scans(cinfo) ~= 0
+		jpg.w = cinfo.image_width
+		jpg.h = cinfo.image_height
+		jpg.format = formats[tonumber(cinfo.jpeg_color_space)]
+		assert(cinfo.num_components == channel_count[jpg.format])
+		jpg.progressive = C.jpeg_has_multiple_scans(cinfo) ~= 0
 
-		img.file.jfif = cinfo.saw_JFIF_marker == 1 and {
+		jpg.jfif = cinfo.saw_JFIF_marker == 1 and {
 			maj_ver = cinfo.JFIF_major_version,
 			min_ver = cinfo.JFIF_minor_version,
 			density_unit = cinfo.density_unit,
@@ -299,56 +318,197 @@ local function open(t)
 			y_density = cinfo.Y_density,
 		} or nil
 
-		img.file.adobe = cinfo.saw_Adobe_marker == 1 and {
+		jpg.adobe = cinfo.saw_Adobe_marker == 1 and {
 			transform = cinfo.Adobe_transform,
 		} or nil
-	end
 
-	local ok, err = pcall(load_header)
+	end
+	jit.header = glue.protect(header)
+
+	local ok, err = jit:header()
 	if not ok then
 		free()
 		return nil, err
 	end
 
-	local function load_image(img, render_scan)
+	--check accepted output pixel formats
+	function jpg.accepts(jpg, accept)
+		if not jpg.format then
+			if type(accept) == 'string' then
+				return false
+			else
+				return {}
+			end
+		end
+		return accepts(jpg.format, accept)
+	end
 
-		--find the best accepted output pixel format
-		assert(img.file.format, 'invalid pixel format')
-		assert(cinfo.num_components == channel_count[img.file.format])
-		img.format = best_format(img.file.format, t.accept)
+	--return output image dimensions according to decoding options
+	function jpg.dimensions(jpg, t)
+		assert(not started)
+		local format = t.format or jpg.format
+		assert(jpg:accepts(format), 'invalid format')
 
-		--set decompression options
-		cinfo.out_color_space = assert(color_spaces[img.format])
-		cinfo.output_components = channel_count[img.format]
+		cinfo.out_color_space = assert(color_spaces[format])
+		cinfo.output_components = channel_count[format]
 		cinfo.scale_num = t.scale_num or 1
 		cinfo.scale_denom = t.scale_denom or 1
 		cinfo.dct_method =
 			assert(dct_methods[t.dct_method or 'accurate'], 'invalid dct_method')
 		cinfo.do_fancy_upsampling = t.fancy_upsampling or false
 		cinfo.do_block_smoothing = t.block_smoothing or false
-		cinfo.buffered_image = 1 --multi-scan reading
+		cinfo.buffered_image = jpg.progressive and 1 or 0 --multi-scan reading
+
+		C.jpeg_calc_output_dimensions()
+
+		local bypp = cinfo.output_components
+		local w = cinfo.output_width
+		local h = cinfo.output_height
+		local stride = t.stride or w * bypp
+		local stride = t.stride_aligned and pad_stride(stride) or stride
+		assert(stride >= w * bypp, 'invalid stride')
+		return w, h, stride, format
+	end
+
+	--make a bitmap according to decoding options
+	function jpg.bitmap(jpg, t)
+		local w, h, stride, format = jpg:dimensions(t)
+		local h = t.h or h
+		assert(h > 0, 'invalid height')
+		local size = stride * h
+		local bmp = {
+			w = w,
+			h = h,
+			stride = stride,
+			size = size,
+			format = format,
+		}
+		bmp.data = t.alloc and t.alloc(size) or ffi.new('uint8_t[?]', size)
+		return bmp
+	end
+
+	--load data in advance of decoding and return on scan and row boundaries.
+	local statuses = {
+		[C.JPEG_REACHED_SOS]    = 'start_scan',
+		[C.JPEG_ROW_COMPLETED]  = 'end_row',
+		[C.JPEG_SCAN_COMPLETED] = 'end_scan',
+	}
+	local function more()
+		start()
+		if C.jpeg_input_complete(cinfo) ~= 0 then return end
+		local ret = C.jpeg_consume_input(cinfo)
+		if ret == C.JPEG_REACHED_EOI then return end
+		while ret == C.JPEG_SUSPENDED then
+			fill_input_buffer()
+			ret = C.jpeg_consume_input(cinfo)
+		end
+		return assert(statuses[ret])
+	end
+	jit.off(more)
+	jpg.more = glue.protect(more)
+
+	local function decode(jpg, scan_num, t)
+		if type(scan_num) ~= 'number' then --scan_num is an optional arg
+			scan_num, t = cinfo.input_scan_number, scan_num
+		end
+		local bmp = t.bitmap
+		if bmp then
+			jpg:dimensions(t) --just set decoding options
+		else
+			bmp = jpg:bitmap()
+		end
+		start()
+		while C.jpeg_start_output(cinfo, scan_num) == 0 then
+			fill_input_buffer()
+		end
+		while cinfo.output_scanline < bmp.h do
+			local i = cinfo.output_scanline % bmp.h
+			local n = math.min(bmp.h - i, cinfo.rec_outbuf_height)
+			while C.jpeg_read_scanlines(cinfo, rows + i, n) < n do
+				fill_input_buffer()
+			end
+		end
+		render_scan(bmp, cinfo.output_scan_number)
+		while C.jpeg_finish_output(cinfo) == 0 do
+			fill_input_buffer()
+		end
+	end
+	jit.off(render)
+	jpg.decode = glue.protect(decode)
+
+	--[[
+
+	function jpg.load_rows(jpg, t)
+		local w, h, stride = jpg:dimensions(t)
+		while C.jpeg_start_decompress(cinfo) == 0 do
+			fill_input_buffer()
+		end
+		local rows = ffi.new('uint8_t*[?]', 1)
+		local function load_row(buf, sz)
+			if C.jpeg_input_complete(cinfo) ~= 0 then --EOI
+				while C.jpeg_finish_decompress(cinfo) == 0 do
+					fill_input_buffer()
+				end
+				return
+			end
+			local ret = C.jpeg_consume_input(cinfo)
+			while ret == C.JPEG_SUSPENDED do
+				fill_input_buffer()
+				ret = C.jpeg_consume_input(cinfo)
+			end
+			local last_scan = ret == C.JPEG_REACHED_EOI
+			elseif ret == C.JPEG_SCAN_COMPLETED then
+			if ret == C.JPEG_ROW_COMPLETED then
+
+			C.jpeg_start_output(cinfo, cinfo.input_scan_number)
+			local i = cinfo.output_scanline
+			rows[0] = buf
+			while C.jpeg_read_scanlines(cinfo, rows, 1) < 1 do
+				fill_input_buffer()
+			end
+			while C.jpeg_finish_output(cinfo) == 0 do
+				fill_input_buffer()
+			end
+
+		end
+	end
+
+	--create an output bitmap for certain decompression options
+	function jpg.output_bitmap(jpg, t)
+		local w, h, stride = jpg:dimensions(t)
+		local bmp = {w = w, h = h, stride = stride, size = stride * h}
+		bmp.data = ffi.new('uint8_t[?]', bmp.size)
+		return bmp
+	end
+
+	local image_loaded
+	local function load_image(jpg, t)
+
+		assert(not image_loaded, 'image already loaded')
+
+		local bmp = t.bitmap
+		assert(jpg:best_format{[bmp.format] = true}, 'invalid format')
+		local w, h, stride = jpg:dimensions(t)
+
+		--check the dest. bitmap
+		assert(bmp.w == w)
+		assert(bmp.h == h)
+		assert(bmp.stride >= w * cinfo.output_components)
+		if t.stride_aligned then
+			bmp.stride = pad_stride(bmp.stride)
+		end
+		bmp.size = bmp.h * bmp.stride
+		bmp.data = ffi.new('uint8_t[?]', bmp.size)
+		bmp.bottom_up = t.bottom_up
+
+		image_loaded = true --the point of no return
 
 		--start decompression, which fills the info about the output image
 		while C.jpeg_start_decompress(cinfo) == 0 do
 			fill_input_buffer()
 		end
 
-		--get info about the output image
-		img.w = cinfo.output_width
-		img.h = cinfo.output_height
-
-		--compute the stride
-		img.stride = cinfo.output_width * cinfo.output_components
-		if t.accept and t.accept.stride_aligned then
-			img.stride = pad_stride(img.stride)
-		end
-
-		--allocate image and row buffers
-		img.size = img.h * img.stride
-		img.data = ffi.new('uint8_t[?]', img.size)
-		img.bottom_up = t.accept and t.accept.bottom_up
-
-		local rows = rows_buffer(img.h, img.bottom_up, img.data, img.stride)
+		local rows = rows_buffer(bmp.h, bmp.bottom_up, bmp.data, bmp.stride)
 
 		--decompress the image
 		while C.jpeg_input_complete(cinfo) == 0 do
@@ -367,19 +527,17 @@ local function open(t)
 			C.jpeg_start_output(cinfo, cinfo.input_scan_number)
 
 			--read all the scanlines into the row buffers
-			while cinfo.output_scanline < img.h do
-
-				--read several scanlines at once, depending on the size of the output buffer
+			while cinfo.output_scanline < bmp.h do
 				local i = cinfo.output_scanline
-				local n = math.min(img.h - i, cinfo.rec_outbuf_height)
+				local n = math.min(bmp.h - i, cinfo.rec_outbuf_height)
 				while C.jpeg_read_scanlines(cinfo, rows + i, n) < n do
 					fill_input_buffer()
 				end
-				--assert(cinfo.output_scanline == i + actual)
+
 			end
 
 			--call the rendering callback on the converted image
-			render_scan(img, last_scan, cinfo.output_scan_number)
+			t.render_scan(bmp, last_scan, cinfo.output_scan_number)
 
 			while C.jpeg_finish_output(cinfo) == 0 do
 				fill_input_buffer()
@@ -391,13 +549,14 @@ local function open(t)
 			fill_input_buffer()
 		end
 
-		return img
+		return bmp
 	end
 
 	jit.off(load_image) --can't call error() from callbacks called from C
-	img.load = glue.protect(load_image)
+	jpg.load = glue.protect(load_image)
+	]]
 
-	return img
+	return jpg
 end
 
 jit.off(open, true) --can't call error() from callbacks called from C
