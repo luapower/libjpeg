@@ -19,7 +19,7 @@ Comes with [libjpeg-turbo] binaries.
 `jpg.progressive`                                 has multiple scans
 `jpg:accepts(fmt) -> true|false`                  check if pixel format is accepted for output
 `jpg:accepts({fmt -> true}) -> {fmt -> true}`     check which pixel formats are accepted for output
-`jpg:dimensions(t) -> w, h, stride`               output dimensions for decompression options
+`jpg:dimensions(fmt|t) -> w, h, stride`           output dimensions for decompression options
 `jpg:load(bmp[, x, y]) -> bmp | nil,err`          load/paint the pixels into a given [bitmap]
 `jpg:load(format, ...) -> bmp | nil,err`          load the pixels into a new bitmap
 `jpg:rows(bmp | format,...) -> iter() -> i, bmp`  iterate the rows over a 1-row bitmap

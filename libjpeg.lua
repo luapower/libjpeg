@@ -4,7 +4,8 @@
 
 if not ... then
 	--require'libjpeg_test'
-	require'libjpeg_demo'
+	--require'libjpeg_demo'
+	require'imageload'
 	return
 end
 
@@ -193,6 +194,11 @@ local function open(t)
 
 	ffi.gc(cinfo, free)
 
+	--state variables
+	local decompress_started, start_decompress, finish_decompress
+	local output_started, start_output, finish_output
+	local options_set
+
 	--create the buffer filling function for suspended I/O
 	local partial_loading = t.partial_loading ~= false
 	local read = t.read
@@ -201,9 +207,10 @@ local function open(t)
 	local bytes_to_skip = 0
 
 	local function fill_input_buffer()
-		if bytes_to_skip > 0 then
-			assert(read(nil, bytes_to_skip) == bytes_to_skip, 'eof')
-			bytes_to_skip = 0
+		while bytes_to_skip > 0 do
+			local bytes_skipped = read(nil, bytes_to_skip)
+			assert(bytes_skipped > 0, 'eof')
+			bytes_to_skip = bytes_to_skip - bytes_skipped
 		end
 		local ofs = tonumber(cinfo.src.bytes_in_buffer)
 		--move the data after the restart point to the start of the buffer
@@ -224,13 +231,26 @@ local function open(t)
 		cinfo.src.bytes_in_buffer = ofs + readsz
 	end
 
-	--create source callbacks
+	--fill the input buffer and consume it in a loop which stops when there
+	--are no more bytes available to be read or an end-of-image marker is found
+	local function read_more()
+		while true do
+			fill_input_buffer()
+			if not (decompress_started and t.read_more and t.read_more()) then
+				return
+			end
+			local ret = C.jpeg_consume_input(cinfo)
+			if ret == C.JPEG_REACHED_EOI then return end
+		end
+	end
+
+	--create source callbacks and set up a source manager with them
 	local cb = {}
 	cb.init_source = glue.pass
 	cb.term_source = glue.pass
 	cb.resync_to_restart = C.jpeg_resync_to_restart
 
-	if t.suspended_io == false then
+	if t.suspended_io == false then --TODO: add support for t.read_more()
 		function cb.fill_input_buffer(cinfo)
 			local readsz = read(buf, sz)
 			if readsz == 0 then --eof
@@ -248,7 +268,7 @@ local function open(t)
 			if sz <= 0 then return end
 			while sz > cinfo.src.bytes_in_buffer do
 				sz = sz - cinfo.src.bytes_in_buffer
-				cb.fill_input_buffer(cinfo)
+				cb.fill_input_buffer(cinfo) --TODO: optimize by null-reading
 			end
 			cinfo.src.next_input_byte = cinfo.src.next_input_byte + sz
 			cinfo.src.bytes_in_buffer = cinfo.src.bytes_in_buffer - sz
@@ -270,38 +290,71 @@ local function open(t)
 		end
 	end
 
-	--create a source manager and set it up
 	local mgr, free_mgr = callback_manager('jpeg_source_mgr', cb)
 	cinfo.src = mgr
 	finally(free_mgr)
 	cinfo.src.bytes_in_buffer = 0
 	cinfo.src.next_input_byte = nil
 
-	local started
+	--state-querying and state-changing functions
+	function jpg.complete(jpg)
+		return C.jpeg_input_complete(cinfo) == 1
+	end
 
-	local function start()
-		if started then return end
-		started = true
+	function jpg.input_scan(jpg)
+		return decompress_started and cinfo.input_scan_number or nil
+	end
+
+	function jpg.output_scan(jpg)
+		return output_started and cinfo.output_scan_number or nil
+	end
+
+	function start_decompress()
+		if decompress_started then return end
+		assert(options_set, 'decoding options not set')
 		while C.jpeg_start_decompress(cinfo) == 0 do
-			fill_input_buffer()
+			read_more()
 		end
+		decompress_started = true
 	end
-	jit.off(start)
+	jit.off(start_decompress)
 
-	local function finish()
-		if not started then return end
-		started = false
+	function finish_decompress()
+		if not decompress_started then return end
+		finish_output()
 		while C.jpeg_finish_decompress(cinfo) == 0 do
-			fill_input_buffer()
+			read_more()
 		end
+		decompress_started = false
+		options_set = false
 	end
-	jit.off(finish)
+	jit.off(finish_decompress)
 
-	local function header()
-		finish()
+	function	start_output(scan_num)
+		finish_output()
+		start_decompress()
+		local scan_num = scan_num or jpg:input_scan()
+		while C.jpeg_start_output(cinfo, scan_num) == 0 do
+			read_more()
+		end
+		output_started = true
+	end
+	jit.off(start_output)
+
+	function finish_output()
+		if not output_started then return end
+		while C.jpeg_finish_output(cinfo) == 0 do
+			read_more()
+		end
+		output_started = false
+	end
+	jit.off(finish_output)
+
+	--read file header and extract metadata
+	local function read_header()
 
 		while C.jpeg_read_header(cinfo, 1) == C.JPEG_SUSPENDED do
-			fill_input_buffer()
+			read_more()
 		end
 
 		jpg.w = cinfo.image_width
@@ -323,16 +376,25 @@ local function open(t)
 		} or nil
 
 	end
-	jit.header = glue.protect(header)
+	jit.off(read_header)
 
-	local ok, err = jit:header()
+	local ok, err = pcall(read_header)
 	if not ok then
 		free()
 		return nil, err
 	end
 
+	--this can be called after the current file is complete in order to
+	--read another file from the same stream.
+	local function new_image()
+		assert(jpg:complete(), 'current image not complete')
+		finish_decompress()
+		read_header()
+	end
+	jit.new_image = glue.protect(new_image)
+
 	--check accepted output pixel formats
-	function jpg.accepts(jpg, accept)
+	function jpg:accepts(accept)
 		if not jpg.format then
 			if type(accept) == 'string' then
 				return false
@@ -344,34 +406,46 @@ local function open(t)
 	end
 
 	--return output image dimensions according to decoding options
-	function jpg.dimensions(jpg, t)
-		assert(not started)
+	function jpg:dimensions(t)
+		assert(not decompress_started, 'decompression already started')
+
+		--normalize args
+		if type(t) == 'string' then
+			t = {format = t}
+		end
+
+		--validate options
 		local format = t.format or jpg.format
 		assert(jpg:accepts(format), 'invalid format')
+		local out_color_space = assert(color_spaces[format])
+		local out_components = assert(channel_count[format])
+		local dct_method = assert(dct_methods[t.dct_method or 'accurate'], 'invalid dct_method')
 
-		cinfo.out_color_space = assert(color_spaces[format])
-		cinfo.output_components = channel_count[format]
+		--set options
+		cinfo.out_color_space = out_color_space
+		cinfo.output_components = out_components
 		cinfo.scale_num = t.scale_num or 1
 		cinfo.scale_denom = t.scale_denom or 1
-		cinfo.dct_method =
-			assert(dct_methods[t.dct_method or 'accurate'], 'invalid dct_method')
+		cinfo.dct_method = dct_method
 		cinfo.do_fancy_upsampling = t.fancy_upsampling or false
 		cinfo.do_block_smoothing = t.block_smoothing or false
 		cinfo.buffered_image = jpg.progressive and 1 or 0 --multi-scan reading
+		options_set = true --unlock decoding
 
+		--compute and return output bitmap dimensions and format
 		C.jpeg_calc_output_dimensions()
-
 		local bypp = cinfo.output_components
 		local w = cinfo.output_width
 		local h = cinfo.output_height
-		local stride = t.stride or w * bypp
+		local min_stride = w * bypp
+		local stride = t.stride or min_stride
 		local stride = t.stride_aligned and pad_stride(stride) or stride
-		assert(stride >= w * bypp, 'invalid stride')
+		local stride = math.max(stride, min_stride)
 		return w, h, stride, format
 	end
 
 	--make a bitmap according to decoding options
-	function jpg.bitmap(jpg, t)
+	function jpg:bitmap(t)
 		local w, h, stride, format = jpg:dimensions(t)
 		local h = t.h or h
 		assert(h > 0, 'invalid height')
@@ -387,173 +461,62 @@ local function open(t)
 		return bmp
 	end
 
-	--load data in advance of decoding and return on scan and row boundaries.
-	local statuses = {
-		[C.JPEG_REACHED_SOS]    = 'start_scan',
-		[C.JPEG_ROW_COMPLETED]  = 'end_row',
-		[C.JPEG_SCAN_COMPLETED] = 'end_scan',
-	}
-	local function more()
-		start()
-		if C.jpeg_input_complete(cinfo) ~= 0 then return end
-		local ret = C.jpeg_consume_input(cinfo)
-		if ret == C.JPEG_REACHED_EOI then return end
-		while ret == C.JPEG_SUSPENDED then
-			fill_input_buffer()
-			ret = C.jpeg_consume_input(cinfo)
-		end
-		return assert(statuses[ret])
-	end
-	jit.off(more)
-	jpg.more = glue.protect(more)
+	local out_bmp, rows, rows_h
 
-	local function decode(jpg, scan_num, t)
-		if type(scan_num) ~= 'number' then --scan_num is an optional arg
-			scan_num, t = cinfo.input_scan_number, scan_num
-		end
-		local bmp = t.bitmap
-		if bmp then
-			jpg:dimensions(t) --just set decoding options
-		else
-			bmp = jpg:bitmap()
-		end
-		start()
-		while C.jpeg_start_output(cinfo, scan_num) == 0 then
-			fill_input_buffer()
-		end
-		while cinfo.output_scanline < bmp.h do
-			local i = cinfo.output_scanline % bmp.h
-			local n = math.min(bmp.h - i, cinfo.rec_outbuf_height)
-			while C.jpeg_read_scanlines(cinfo, rows + i, n) < n do
-				fill_input_buffer()
-			end
-		end
-		render_scan(bmp, cinfo.output_scan_number)
-		while C.jpeg_finish_output(cinfo) == 0 do
-			fill_input_buffer()
+	jpg.start_output = glue.protect(function(bmp)
+		--validate the dest. bitmap
+		local format = bmp.format or jpg.format
+		assert(jpg:accepts(format), 'invalid format')
+		local bypp = cinfo.output_components
+		local w = cinfo.output_width
+		local min_stride = w * bypp
+		assert(bmp.stride >= min_stride, 'stride too small')
+		--create pointer array to rows
+		local rows_h = math.min(cinfo.output_height, bmp.h)
+		local rows = rows_buffer(rows_h, bmp.bottom_up, bmp.data, bmp.stride)
+		out_bmp = bmp
+		start_output()
+	end)
+
+	local function next_row()
+		assert(output_started, 'output not started')
+		if cinfo.output_scanline == h then return end
+		local i = cinfo.output_scanline % rows_h
+		while C.jpeg_read_scanlines(cinfo, rows + i, 1) < 1 do
+			read_more()
 		end
 	end
-	jit.off(render)
-	jpg.decode = glue.protect(decode)
+	jpg.next_row = glue.protect(next_row)
+
+	jpg.finish_output = glue.protect(finish_output)
 
 	--[[
+	local function decode(bmp)
+		start_output()
 
-	function jpg.load_rows(jpg, t)
-		local w, h, stride = jpg:dimensions(t)
-		while C.jpeg_start_decompress(cinfo) == 0 do
-			fill_input_buffer()
+		--validate the dest. bitmap
+		local format = bmp.format or jpg.format
+		assert(jpg:accepts(format), 'invalid format')
+		local bypp = cinfo.output_components
+		local w = cinfo.output_width
+		local h = cinfo.output_height
+		local min_stride = w * bypp
+		assert(bmp.stride >= min_stride, 'stride too small')
+
+		local dh = math.min(h, bmp.h)
+		local rows = rows_buffer(dh, bmp.bottom_up, bmp.data, bmp.stride)
+		while cinfo.output_scanline < h do
+			local i = cinfo.output_scanline % dh
+			local n = math.min(h - i, cinfo.rec_outbuf_height)
+			while C.jpeg_read_scanlines(cinfo, rows + i, n) < n do
+				read_more()
+			end
 		end
-		local rows = ffi.new('uint8_t*[?]', 1)
-		local function load_row(buf, sz)
-			if C.jpeg_input_complete(cinfo) ~= 0 then --EOI
-				while C.jpeg_finish_decompress(cinfo) == 0 do
-					fill_input_buffer()
-				end
-				return
-			end
-			local ret = C.jpeg_consume_input(cinfo)
-			while ret == C.JPEG_SUSPENDED do
-				fill_input_buffer()
-				ret = C.jpeg_consume_input(cinfo)
-			end
-			local last_scan = ret == C.JPEG_REACHED_EOI
-			elseif ret == C.JPEG_SCAN_COMPLETED then
-			if ret == C.JPEG_ROW_COMPLETED then
 
-			C.jpeg_start_output(cinfo, cinfo.input_scan_number)
-			local i = cinfo.output_scanline
-			rows[0] = buf
-			while C.jpeg_read_scanlines(cinfo, rows, 1) < 1 do
-				fill_input_buffer()
-			end
-			while C.jpeg_finish_output(cinfo) == 0 do
-				fill_input_buffer()
-			end
-
-		end
+		finish_output()
 	end
-
-	--create an output bitmap for certain decompression options
-	function jpg.output_bitmap(jpg, t)
-		local w, h, stride = jpg:dimensions(t)
-		local bmp = {w = w, h = h, stride = stride, size = stride * h}
-		bmp.data = ffi.new('uint8_t[?]', bmp.size)
-		return bmp
-	end
-
-	local image_loaded
-	local function load_image(jpg, t)
-
-		assert(not image_loaded, 'image already loaded')
-
-		local bmp = t.bitmap
-		assert(jpg:best_format{[bmp.format] = true}, 'invalid format')
-		local w, h, stride = jpg:dimensions(t)
-
-		--check the dest. bitmap
-		assert(bmp.w == w)
-		assert(bmp.h == h)
-		assert(bmp.stride >= w * cinfo.output_components)
-		if t.stride_aligned then
-			bmp.stride = pad_stride(bmp.stride)
-		end
-		bmp.size = bmp.h * bmp.stride
-		bmp.data = ffi.new('uint8_t[?]', bmp.size)
-		bmp.bottom_up = t.bottom_up
-
-		image_loaded = true --the point of no return
-
-		--start decompression, which fills the info about the output image
-		while C.jpeg_start_decompress(cinfo) == 0 do
-			fill_input_buffer()
-		end
-
-		local rows = rows_buffer(bmp.h, bmp.bottom_up, bmp.data, bmp.stride)
-
-		--decompress the image
-		while C.jpeg_input_complete(cinfo) == 0 do
-
-			--read all the scanlines of the current scan
-			local ret
-			repeat
-				ret = C.jpeg_consume_input(cinfo)
-				if ret == C.JPEG_SUSPENDED then
-					fill_input_buffer()
-				end
-			until ret == C.JPEG_REACHED_EOI or ret == C.JPEG_SCAN_COMPLETED
-			local last_scan = ret == C.JPEG_REACHED_EOI
-
-			--render the scan
-			C.jpeg_start_output(cinfo, cinfo.input_scan_number)
-
-			--read all the scanlines into the row buffers
-			while cinfo.output_scanline < bmp.h do
-				local i = cinfo.output_scanline
-				local n = math.min(bmp.h - i, cinfo.rec_outbuf_height)
-				while C.jpeg_read_scanlines(cinfo, rows + i, n) < n do
-					fill_input_buffer()
-				end
-
-			end
-
-			--call the rendering callback on the converted image
-			t.render_scan(bmp, last_scan, cinfo.output_scan_number)
-
-			while C.jpeg_finish_output(cinfo) == 0 do
-				fill_input_buffer()
-			end
-
-		end
-
-		while C.jpeg_finish_decompress(cinfo) == 0 do
-			fill_input_buffer()
-		end
-
-		return bmp
-	end
-
-	jit.off(load_image) --can't call error() from callbacks called from C
-	jpg.load = glue.protect(load_image)
+	jit.off(decode)
+	jpg.decode = glue.protect(decode)
 	]]
 
 	return jpg
