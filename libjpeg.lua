@@ -285,13 +285,12 @@ local function open(t)
 			fill_input_buffer()
 		end
 
-		img.file = {}
-		img.file.w = cinfo.image_width
-		img.file.h = cinfo.image_height
-		img.file.format = formats[tonumber(cinfo.jpeg_color_space)]
-		img.file.progressive = C.jpeg_has_multiple_scans(cinfo) ~= 0
+		img.w = cinfo.image_width
+		img.h = cinfo.image_height
+		img.format = formats[tonumber(cinfo.jpeg_color_space)]
+		img.progressive = C.jpeg_has_multiple_scans(cinfo) ~= 0
 
-		img.file.jfif = cinfo.saw_JFIF_marker == 1 and {
+		img.jfif = cinfo.saw_JFIF_marker == 1 and {
 			maj_ver = cinfo.JFIF_major_version,
 			min_ver = cinfo.JFIF_minor_version,
 			density_unit = cinfo.density_unit,
@@ -299,7 +298,7 @@ local function open(t)
 			y_density = cinfo.Y_density,
 		} or nil
 
-		img.file.adobe = cinfo.saw_Adobe_marker == 1 and {
+		img.adobe = cinfo.saw_Adobe_marker == 1 and {
 			transform = cinfo.Adobe_transform,
 		} or nil
 	end
@@ -313,9 +312,9 @@ local function open(t)
 	local function load_image(img, t)
 
 		--find the best accepted output pixel format
-		assert(img.file.format, 'invalid pixel format')
-		assert(cinfo.num_components == channel_count[img.file.format])
-		img.format = best_format(img.file.format, t and t.accept)
+		assert(img.format, 'invalid pixel format')
+		assert(cinfo.num_components == channel_count[img.format])
+		img.format = best_format(img.format, t and t.accept)
 
 		--set decompression options
 		cinfo.out_color_space = assert(color_spaces[img.format])

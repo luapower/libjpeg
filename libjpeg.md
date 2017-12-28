@@ -32,22 +32,25 @@ including zero which signals EOF.
 The `opt` table has the fields:
 
   * `read`: the read function (required).
-  * `partial_loading`: true/false (default is true); display broken images
+  * `partial_loading`: `true/false` (default is `true`); display broken images
     partially or break with an error.
   * `warning`: a function to be called as `warning(msg, level)` on non-fatal
   errors.
   * `read_buffer`: optional, the read buffer to use.
   * `read_buffer_size`: the read buffer size.
   * `suspended_io`: use suspended I/O, i.e. yieldable callbacks
-  (default is true). note that arithmetic decoding doesn't work with
+  (default is `true`). note that arithmetic decoding doesn't work with
   suspended I/O (browsers don't support arithmetic decoding either
   for the same reason).
 
 The return value is an image object which gives information about the file
 and can be used to load and decode the actual pixels. It has the fields:
 
-  * `file`: a table describing the source file, with the following attributes:
-	  * `w`, `h`, `format`, `progressive`, `jfif`, `adobe`.
+  * `w`, `h`: width and height of the image.
+  * `format`: the format in which the image is stored.
+  * `progressive`: `true` if it's a progressive image.
+  * `jfif`: JFIF marker (see code).
+  * `adobe`: Adobe marker (see code).
   * `partial`: true if the image was found to be truncated and it was
   partially loaded (this may become `true` after loading the image).
 
@@ -59,9 +62,8 @@ Load the image, returning a [bitmap] object. `opt` is an options table which
 can have the fields:
 
   * `accept.<pixel_format>`: `true/false` specify one or more accepted
-  pixel formats: `rgb8`, `bgr8`, `rgba8`, `bgra8`, `argb8`, `abgr8`, `rgbx8`,
-  `bgrx8`, `xrgb8`, `xbgr8`, `g8`, `ga8`, `ag8`, `ycc8`, `ycck8`, `cmyk8`.
-  * `accept.bottom_up`: `true/false` (default is false) - specify that the
+  pixel formats (see conversion table below).
+  * `accept.bottom_up`: `true/false` (default is `false`) - specify that the
   output bitmap should have its rows upside-down.
   * `accept.stride_aligned`: `true/false` (default is `false`) - specify that
   the row stride should be a multiple of 4.
@@ -75,6 +77,15 @@ can have the fields:
   upsampling method.
   * `block_smoothing`: `true/false` (default is `false`); smooth out large
   pixels of early progression stages for progressive JPEGs.
+
+#### Format Conversions
+
+------------------- -------------------------------------------------------------
+__source formats__  __destination formats__
+ycc8 g8             rgb8 bgr8 rgba8 bgra8 argb8 abgr8 rgbx8 bgrx8 xrgb8 xbgr8 g8
+ycck8               cmyk8
+------------------- -------------------------------------------------------------
+
 
 __NOTE__: Not all conversions are possible with libjpeg-turbo, so always
 check the image's `format` field to get the actual format. Use [bitmap] to
