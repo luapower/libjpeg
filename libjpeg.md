@@ -80,16 +80,18 @@ can have the fields:
 
 #### Format Conversions
 
-------------------- -------------------------------------------------------------
+------------------- ----------------------------------------------------------
 __source formats__  __destination formats__
-ycc8 g8             rgb8 bgr8 rgba8 bgra8 argb8 abgr8 rgbx8 bgrx8 xrgb8 xbgr8 g8
-ycck8               cmyk8
-------------------- -------------------------------------------------------------
 
+`ycc8`, `g8`        `rgb8`, `bgr8`, `rgba8`, `bgra8`, `argb8`, `abgr8`,
+                    `rgbx8`, `bgrx8`, `xrgb8`, `xbgr8`, `g8`
 
-__NOTE__: Not all conversions are possible with libjpeg-turbo, so always
-check the image's `format` field to get the actual format. Use [bitmap] to
-further convert the image if necessary.
+`ycck8`             `cmyk8`
+------------------- ----------------------------------------------------------
+
+__NOTE__: As can be seen, not all conversions are possible with libjpeg-turbo,
+so always check the image's `format` field to get the actual format. Use
+[bitmap] to further convert the image if necessary.
 
 For more info on the decoding process and options read the
 [libjpeg-turbo doc].
