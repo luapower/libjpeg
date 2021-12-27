@@ -303,6 +303,7 @@ local function open(t)
 			transform = cinfo.Adobe_transform,
 		} or nil
 	end
+	jit.off(load_header) --can't call error() from callbacks called from C
 
 	local ok, err = pcall(load_header)
 	if not ok then
@@ -404,9 +405,8 @@ end
 
 jit.off(open, true) --can't call error() from callbacks called from C
 
-local save = glue.protect(function(t)
-
-	return glue.fcall(function(finally)
+local function save(t)
+	return glue.fpcall(function(finally)
 
 		--create the state object
 		local cinfo = ffi.new'jpeg_compress_struct'
@@ -502,7 +502,7 @@ local save = glue.protect(function(t)
 		--finish the compression, optionally adding additional scans
 		C.jpeg_finish_compress(cinfo)
 	end)
-end)
+end
 
 jit.off(save, true) --can't call error() from callbacks called from C
 

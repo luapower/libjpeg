@@ -102,10 +102,10 @@ __NOTE:__ the number of bits per channel in the output bitmap is always 8.
 
 Free the image and associated resources.
 
-### `libjpeg.save(opt) -> string | chunks_t | nil`
+### `libjpeg.save(opt)`
 
 Save a [bitmap] as JPEG. `opt` is a table containing at least the source
-bitmap and destination, and possibly other options:
+bitmap and an output write function, and possibly other options:
 
   * `bitmap`: a [bitmap] in an accepted format.
   * `write`: write data to a sink of the form `write(buf, size)`.
@@ -116,10 +116,9 @@ bitmap and destination, and possibly other options:
   * `dct_method`: `'accurate'`, `'fast'`, `'float'` (default is `'accurate'`).
   * `optimize_coding`: optimize huffmann tables.
   * `smoothing`: `0..100` range. smoothing factor.
-  * `bufsize`: internal buffer size (default is 4096).
+  * `write_buffer_size`: internal buffer size (default is 4096).
+  * `write_buffer`: internal buffer (default is to internally allocate one).
 
-----
-See also: [nanojpeg]
 
 [libjpeg-home]:       http://libjpeg.sourceforge.net/
 [libjpeg-turbo]:      http://www.libjpeg-turbo.org/
