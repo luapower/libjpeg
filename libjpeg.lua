@@ -406,7 +406,7 @@ end
 jit.off(open, true) --can't call error() from callbacks called from C
 
 local function save(t)
-	return glue.fpcall(function(finally)
+	return glue.fcall(function(finally)
 
 		--create the state object
 		local cinfo = ffi.new'jpeg_compress_struct'
@@ -441,7 +441,7 @@ local function save(t)
 		end
 
 		function cb.term_destination(cinfo)
-			write(buf, sz - cinfo.dest.free_in_buffer)
+			write(buf, tonumber(sz - cinfo.dest.free_in_buffer))
 			finish()
 		end
 
