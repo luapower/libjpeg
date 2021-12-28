@@ -203,10 +203,19 @@ local function open(t)
 	local buf = t.read_buffer or ffi.new('char[?]', sz)
 	local bytes_to_skip = 0
 
+	--create a skip buffer if the reader doesn't support seeking.
+	local skip_buf_sz, skip_buf = 1/0
+	if t.skip_buffer ~= false then
+		skip_buf_sz = t.skip_buffer_size or 4096
+		skip_buf = t.skip_buffer or ffi.new('char[?]', skip_buf_sz)
+	end
+
 	local function fill_input_buffer()
-		if bytes_to_skip > 0 then
-			read(nil, bytes_to_skip)
-			bytes_to_skip = 0
+		while bytes_to_skip > 0 do
+			local sz = math.min(skip_buf_sz, bytes_to_skip)
+			local readsz = assert(read(skip_buf, sz))
+			assert(readsz > 0, 'eof')
+			bytes_to_skip = bytes_to_skip - readsz
 		end
 		local ofs = tonumber(cinfo.src.bytes_in_buffer)
 		--move the data after the restart point to the start of the buffer
@@ -216,7 +225,7 @@ local function open(t)
 		--fill the rest of the buffer
 		local sz = sz - ofs
 		assert(sz > 0, 'buffer too small')
-		local readsz = read(buf + ofs, sz)
+		local readsz = assert(read(buf + ofs, sz))
 		if readsz == 0 then --eof
 			assert(partial_loading, 'eof')
 			readsz = #JPEG_EOI
@@ -235,7 +244,7 @@ local function open(t)
 
 	if t.suspended_io == false then
 		function cb.fill_input_buffer(cinfo)
-			local readsz = read(buf, sz)
+			local readsz = assert(read(buf, sz))
 			if readsz == 0 then --eof
 				assert(partial_loading, 'eof')
 				readsz = #JPEG_EOI

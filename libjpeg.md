@@ -24,10 +24,10 @@ Open a JPEG image and read its header. `opt` is a table containing at least
 the read function and possibly other options.
 
 The read function has the form `read(buf, size) -> readsize`, it can yield
-and it must signal I/O errors by raising an error. It must accept `nil`
-for `buf` which means skip bytes (i.e. seek). It will only be asked to read
-a positive number of bytes and it can return less bytes than asked,
-including zero which signals EOF.
+and it can signal I/O errors by raising an error or by returning `nil, err`.
+It must accept `nil` for `buf` which means skip bytes (i.e. seek).
+It will only be asked to read a positive number of bytes and it can return
+less bytes than asked, including zero which signals EOF.
 
 The `opt` table has the fields:
 
