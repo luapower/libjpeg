@@ -25,7 +25,6 @@ the read function and possibly other options.
 
 The read function has the form `read(buf, size) -> readsize`, it can yield
 and it can signal I/O errors by raising an error or by returning `nil, err`.
-It must accept `nil` for `buf` which means skip bytes (i.e. seek).
 It will only be asked to read a positive number of bytes and it can return
 less bytes than asked, including zero which signals EOF.
 
@@ -55,6 +54,15 @@ and can be used to load and decode the actual pixels. It has the fields:
   partially loaded (this may become `true` after loading the image).
 
 __NOTE:__ Unknown JPEG formats are opened but the `format` field is missing.
+
+__TIP__: The best way to read an image from a file is to use [fs]'s
+`buffered_read` reader function:
+
+```lua
+local fs = require'fs'
+local f = assert(fs.open'foo.jpg')
+local img = assert(libjpeg.open{read = f:buffered_read(), skip_buffer = false})
+```
 
 ### `img:load([opt]) -> bmp`
 
