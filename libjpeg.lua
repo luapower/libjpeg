@@ -159,6 +159,7 @@ local function open(opt)
 	if type(opt) == 'function' then
 		opt = {read = opt}
 	end
+	local read = assert(opt.read, 'read expected')
 
 	--create a global free function and finalizer accumulator
 	local free_t = {} --{free1, ...}
@@ -198,7 +199,6 @@ local function open(opt)
 
 	--create the buffer filling function for suspended I/O
 	local partial_loading = opt.partial_loading ~= false
-	local read = opt.read
 	local sz   = opt.read_buffer_size or 4096
 	local buf  = opt.read_buffer or ffi.new('char[?]', sz)
 	local bytes_to_skip = 0
