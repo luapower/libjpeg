@@ -153,11 +153,11 @@ local function rows_buffer(h, bottom_up, data, stride)
 	return rows
 end
 
-local function open(t)
+local function open(opt)
 
 	--normalize args
-	if type(t) == 'function' then
-		t = {read = t}
+	if type(opt) == 'function' then
+		opt = {read = opt}
 	end
 
 	--create a global free function and finalizer accumulator
@@ -180,13 +180,13 @@ local function open(t)
 	img.free = free
 
 	--setup error handling
-	local jerr, jerr_free = jpeg_err(t)
+	local jerr, jerr_free = jpeg_err(opt)
 	cinfo.err = jerr
 	finally(jerr_free)
 
 	--init state
 	C.jpeg_CreateDecompress(cinfo,
-		t.lib_version or LIBJPEG_VERSION,
+		opt.lib_version or LIBJPEG_VERSION,
 		ffi.sizeof(cinfo))
 
 	finally(function()
@@ -197,17 +197,17 @@ local function open(t)
 	ffi.gc(cinfo, free)
 
 	--create the buffer filling function for suspended I/O
-	local partial_loading = t.partial_loading ~= false
-	local read = t.read
-	local sz = t.read_buffer_size or 4096
-	local buf = t.read_buffer or ffi.new('char[?]', sz)
+	local partial_loading = opt.partial_loading ~= false
+	local read = opt.read
+	local sz   = opt.read_buffer_size or 4096
+	local buf  = opt.read_buffer or ffi.new('char[?]', sz)
 	local bytes_to_skip = 0
 
 	--create a skip buffer if the reader doesn't support seeking.
 	local skip_buf_sz, skip_buf = 1/0
-	if t.skip_buffer ~= false then
-		skip_buf_sz = t.skip_buffer_size or 4096
-		skip_buf = t.skip_buffer or ffi.new('char[?]', skip_buf_sz)
+	if opt.skip_buffer ~= false then
+		skip_buf_sz = opt.skip_buffer_size or 4096
+		skip_buf    = opt.skip_buffer or ffi.new('char[?]', skip_buf_sz)
 	end
 
 	local function fill_input_buffer()
@@ -242,7 +242,7 @@ local function open(t)
 	cb.term_source = glue.pass
 	cb.resync_to_restart = C.jpeg_resync_to_restart
 
-	if t.suspended_io == false then
+	if opt.suspended_io == false then
 		function cb.fill_input_buffer(cinfo)
 			local readsz = assert(read(buf, sz))
 			if readsz == 0 then --eof
@@ -320,23 +320,23 @@ local function open(t)
 		return nil, err
 	end
 
-	local function load_image(img, t)
-
+	local function load_image(img, opt)
+		opt = opt or glue.empty
 		local bmp = {}
 		--find the best accepted output pixel format
 		assert(img.format, 'invalid pixel format')
 		assert(cinfo.num_components == channel_count[img.format])
-		bmp.format = best_format(img.format, t and t.accept)
+		bmp.format = best_format(img.format, opt.accept)
 
 		--set decompression options
 		cinfo.out_color_space = assert(color_spaces[bmp.format])
 		cinfo.output_components = channel_count[bmp.format]
-		cinfo.scale_num = t and t.scale_num or 1
-		cinfo.scale_denom = t and t.scale_denom or 1
-		local dct_method = dct_methods[t and t.dct_method or 'accurate']
+		cinfo.scale_num   = opt.scale_num or 1
+		cinfo.scale_denom = opt.scale_denom or 1
+		local dct_method = dct_methods[opt.dct_method or 'accurate']
 		cinfo.dct_method = assert(dct_method, 'invalid dct_method')
-		cinfo.do_fancy_upsampling = t and t.fancy_upsampling or false
-		cinfo.do_block_smoothing = t and t.block_smoothing or false
+		cinfo.do_fancy_upsampling = opt.fancy_upsampling or false
+		cinfo.do_block_smoothing  = opt.block_smoothing or false
 		cinfo.buffered_image = 1 --multi-scan reading
 
 		--start decompression, which fills the info about the output image
@@ -350,14 +350,14 @@ local function open(t)
 
 		--compute the stride
 		bmp.stride = cinfo.output_width * cinfo.output_components
-		if t and t.accept and t.accept.stride_aligned then
+		if opt.accept and opt.accept.stride_aligned then
 			bmp.stride = pad_stride(bmp.stride)
 		end
 
 		--allocate image and row buffers
 		bmp.size = bmp.h * bmp.stride
 		bmp.data = ffi.new('uint8_t[?]', bmp.size)
-		bmp.bottom_up = t and t.accept and t.accept.bottom_up
+		bmp.bottom_up = opt.accept and opt.accept.bottom_up
 
 		local rows = rows_buffer(bmp.h, bmp.bottom_up, bmp.data, bmp.stride)
 
@@ -389,8 +389,8 @@ local function open(t)
 			end
 
 			--call the rendering callback on the converted image
-			if t and t.render_scan then
-				t.render_scan(bmp, last_scan, cinfo.output_scan_number)
+			if opt.render_scan then
+				opt.render_scan(bmp, last_scan, cinfo.output_scan_number)
 			end
 
 			while C.jpeg_finish_output(cinfo) == 0 do
@@ -414,32 +414,32 @@ end
 
 jit.off(open, true) --can't call error() from callbacks called from C
 
-local function save(t)
+local function save(opt)
 	return glue.fcall(function(finally)
 
 		--create the state object
 		local cinfo = ffi.new'jpeg_compress_struct'
 
 		--setup error handling
-		local jerr, jerr_free = jpeg_err(t)
+		local jerr, jerr_free = jpeg_err(opt)
 		cinfo.err = jerr
 		finally(jerr_free)
 
 		--init state
 		C.jpeg_CreateCompress(cinfo,
-			t.lib_version or LIBJPEG_VERSION,
+			opt.lib_version or LIBJPEG_VERSION,
 			ffi.sizeof(cinfo))
 
 		finally(function()
 			C.jpeg_destroy_compress(cinfo)
 		end)
 
-		local write = t.write
-		local finish = t.finish or glue.pass
+		local write = opt.write
+		local finish = opt.finish or glue.pass
 
 		--create the dest. buffer
-		local sz = t.write_buffer_size or 4096
-		local buf = t.write_buffer or ffi.new('char[?]', sz)
+		local sz = opt.write_buffer_size or 4096
+		local buf = opt.write_buffer or ffi.new('char[?]', sz)
 
 		--create destination callbacks
 		local cb = {}
@@ -466,43 +466,43 @@ local function save(t)
 		finally(free_mgr) --the finalizer anchors mgr through free_mgr!
 
 		--set the source format
-		cinfo.image_width = t.bitmap.w
-		cinfo.image_height = t.bitmap.h
+		cinfo.image_width  = opt.bitmap.w
+		cinfo.image_height = opt.bitmap.h
 		cinfo.in_color_space =
-			assert(color_spaces[t.bitmap.format], 'invalid source format')
+			assert(color_spaces[opt.bitmap.format], 'invalid source format')
 		cinfo.input_components =
-			assert(channel_count[t.bitmap.format], 'invalid source format')
+			assert(channel_count[opt.bitmap.format], 'invalid source format')
 
 		--set the default compression options based on in_color_space
 		C.jpeg_set_defaults(cinfo)
 
 		--set compression options
-		if t.format then
+		if opt.format then
 			C.jpeg_set_colorspace(cinfo,
-				assert(color_spaces[t.format], 'invalid destination format'))
+				assert(color_spaces[opt.format], 'invalid destination format'))
 		end
-		if t.quality then
-			C.jpeg_set_quality(cinfo, t.quality, true)
+		if opt.quality then
+			C.jpeg_set_quality(cinfo, opt.quality, true)
 		end
-		if t.progressive then
+		if opt.progressive then
 			C.jpeg_simple_progression(cinfo)
 		end
-		if t.dct_method then
+		if opt.dct_method then
 			cinfo.dct_method =
-				assert(dct_methods[t.dct_method], 'invalid dct_method')
+				assert(dct_methods[opt.dct_method], 'invalid dct_method')
 		end
-		if t.optimize_coding then
-			cinfo.optimize_coding = t.optimize_coding
+		if opt.optimize_coding then
+			cinfo.optimize_coding = opt.optimize_coding
 		end
-		if t.smoothing then
-			cinfo.smoothing_factor = t.smoothing
+		if opt.smoothing then
+			cinfo.smoothing_factor = opt.smoothing
 		end
 
 		--start the compression cycle
 		C.jpeg_start_compress(cinfo, true)
 
 		--make row pointers from the bitmap buffer
-		local bmp = t.bitmap
+		local bmp = opt.bitmap
 		local rows = rows_buffer(bmp.h, bmp.bottom_up, bmp.data, bmp.stride)
 
 		--compress rows
