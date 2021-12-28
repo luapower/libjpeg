@@ -8,11 +8,12 @@ require'unit'
 
 local filesets = {}
 filesets.test = dir'media/jpeg/test*'
+table.remove(filesets.test, glue.indexof('media/jpeg/testimgari.jpg', filesets.test))
 filesets.progressive = {'media/jpeg/progressive.jpg'}
 filesets.cmyk = {'media/jpeg/cmyk.jpg'} --test skip bytes with this one
 filesets.birds = {'media/jpeg/birds.jpg'}
 filesets.autumn = {'media/jpeg/autumn-wallpaper.jpg'}
-filesets.no_suspension = {'media/jpeg/testimgari.jpg'} --no i/o suspension with this one :(
+filesets.arith_decoding = {'media/jpeg/testimgari.jpg'} --no i/o suspension with this one :(
 local fileset = 'test'
 
 --gui options
@@ -28,16 +29,14 @@ local block_smoothing = false
 local partial = true
 local bottom_up = false
 local stride_aligned = false
-local suspended_io = true
 
 function testui:repaint()
 
 	self:pushgroup'right'
 	local _
 	_,fileset      = self:choose('file set', {
-		'test', 'progressive', 'cmyk', 'birds', 'autumn', 'no_suspension',
+		'test', 'progressive', 'cmyk', 'birds', 'autumn', 'arith_decoding',
 	}, fileset)
-	_,suspended_io = self:button('suspended I/O', suspended_io)
 	_,partial      = self:button('partial loading', partial)
 	self:nextgroup()
 	self.min_w = self.cw - 2 * self.x
@@ -120,7 +119,6 @@ function testui:repaint()
 			fancy_upsampling = fancy_upsampling,
 			block_smoothing = block_smoothing,
 			partial_loading = partial,
-			suspended_io = suspended_io,
 		}
 		if not img then err = 'open '..err end
 		local ok

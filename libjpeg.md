@@ -24,9 +24,9 @@ Open a JPEG image and read its header. `opt` is a table containing at least
 the read function and possibly other options.
 
 The read function has the form `read(buf, size) -> readsize`, it can yield
-and it can signal I/O errors by raising an error or by returning `nil, err`.
-It will only be asked to read a positive number of bytes and it can return
-less bytes than asked, including zero which signals EOF.
+and it can signal I/O errors by returning `nil, err`. It will only be asked
+to read a positive number of bytes and it can return less bytes than asked,
+including zero which signals EOF.
 
 The `opt` table has the fields:
 
@@ -37,10 +37,6 @@ The `opt` table has the fields:
   errors.
   * `read_buffer`: optional, the read buffer to use.
   * `read_buffer_size`: the read buffer size.
-  * `suspended_io`: use suspended I/O, i.e. yieldable callbacks
-  (default is `true`). note that arithmetic decoding doesn't work with
-  suspended I/O (browsers don't support arithmetic decoding either
-  for the same reason).
 
 The return value is an image object which gives information about the file
 and can be used to load and decode the actual pixels. It has the fields:
@@ -54,6 +50,10 @@ and can be used to load and decode the actual pixels. It has the fields:
   partially loaded (this may become `true` after loading the image).
 
 __NOTE:__ Unknown JPEG formats are opened but the `format` field is missing.
+
+__NOTE:__ Arithmetic decoding doesn't work with suspended I/O and we need
+that to allow the read callback to yield (browsers don't support arithmetic
+decoding either for the same reason).
 
 __TIP__: The best way to read an image from a file is to use [fs]'s
 `buffered_read` reader function:

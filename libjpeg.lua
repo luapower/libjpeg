@@ -242,43 +242,18 @@ local function open(opt)
 	cb.term_source = glue.pass
 	cb.resync_to_restart = C.jpeg_resync_to_restart
 
-	if opt.suspended_io == false then
-		function cb.fill_input_buffer(cinfo)
-			local readsz = assert(read(buf, sz))
-			if readsz == 0 then --eof
-				assert(partial_loading, 'eof')
-				readsz = #JPEG_EOI
-				assert(readsz <= sz, 'buffer too small')
-				ffi.copy(buf, JPEG_EOI)
-				img.partial = true
-			end
-			cinfo.src.bytes_in_buffer = readsz
-			cinfo.src.next_input_byte = buf
-			return true
-		end
-		function cb.skip_input_data(cinfo, sz)
-			if sz <= 0 then return end
-			while sz > cinfo.src.bytes_in_buffer do
-				sz = sz - cinfo.src.bytes_in_buffer
-				cb.fill_input_buffer(cinfo)
-			end
-			cinfo.src.next_input_byte = cinfo.src.next_input_byte + sz
+	function cb.fill_input_buffer(cinfo)
+		return false --suspended I/O mode
+	end
+	function cb.skip_input_data(cinfo, sz)
+		if sz <= 0 then return end
+		if sz >= cinfo.src.bytes_in_buffer then
+			bytes_to_skip = sz - tonumber(cinfo.src.bytes_in_buffer)
+			cinfo.src.bytes_in_buffer = 0
+		else
+			bytes_to_skip = 0
 			cinfo.src.bytes_in_buffer = cinfo.src.bytes_in_buffer - sz
-		end
-	else
-		function cb.fill_input_buffer(cinfo)
-			return false --suspended I/O mode
-		end
-		function cb.skip_input_data(cinfo, sz)
-			if sz <= 0 then return end
-			if sz >= cinfo.src.bytes_in_buffer then
-				bytes_to_skip = tonumber(sz - cinfo.src.bytes_in_buffer)
-				cinfo.src.bytes_in_buffer = 0
-			else
-				bytes_to_skip = 0
-				cinfo.src.bytes_in_buffer = cinfo.src.bytes_in_buffer - sz
-				cinfo.src.next_input_byte = cinfo.src.next_input_byte + sz
-			end
+			cinfo.src.next_input_byte = cinfo.src.next_input_byte + sz
 		end
 	end
 
@@ -312,7 +287,6 @@ local function open(opt)
 			transform = cinfo.Adobe_transform,
 		} or nil
 	end
-	jit.off(load_header) --can't call error() from callbacks called from C
 
 	local ok, err = pcall(load_header)
 	if not ok then
@@ -406,13 +380,10 @@ local function open(opt)
 		return bmp
 	end
 
-	jit.off(load_image) --can't call error() from callbacks called from C
 	img.load = glue.protect(load_image)
 
 	return img
 end
-
-jit.off(open, true) --can't call error() from callbacks called from C
 
 local function save(opt)
 	return glue.fcall(function(finally)
@@ -450,7 +421,7 @@ local function save(opt)
 		end
 
 		function cb.term_destination(cinfo)
-			write(buf, tonumber(sz - cinfo.dest.free_in_buffer))
+			write(buf, sz - tonumber(cinfo.dest.free_in_buffer))
 			finish()
 		end
 
@@ -513,7 +484,7 @@ local function save(opt)
 	end)
 end
 
-jit.off(save, true) --can't call error() from callbacks called from C
+jit.off(save, true) --can't call error() from callbacks called from C.
 
 return {
 	open = open,
