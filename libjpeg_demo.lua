@@ -108,6 +108,7 @@ function testui:repaint()
 			left = left - readsz
 			return readsz
 		end
+
 		local img, err = libjpeg.open{
 			read = read,
 			skip_buffer = false,
@@ -132,6 +133,7 @@ function testui:repaint()
 		if img then
 			img:free()
 		end
+
 		f:close()
 	end
 
