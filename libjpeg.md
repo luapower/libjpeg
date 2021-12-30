@@ -23,7 +23,7 @@ Comes with [libjpeg-turbo] binaries.
 Open a JPEG image and read its header. `opt` is a table containing at least
 the read function and possibly other options.
 
-The read function has the form `read(buf, size) -> readsize`, it can yield
+The read function has the form `read(buf, len) -> readlen`, it can yield
 and it can signal I/O errors by returning `nil, err`. It will only be asked
 to read a positive number of bytes and it can return less bytes than asked,
 including zero which signals EOF.
