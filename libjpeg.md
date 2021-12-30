@@ -55,7 +55,7 @@ __NOTE:__ Arithmetic decoding doesn't work with suspended I/O and we need
 that to allow the read callback to yield (browsers don't support arithmetic
 decoding either for the same reason).
 
-__TIP__: Use `tcp:noyield_read()` from [sock] to read from a TCP socket.
+__TIP__: Wrap `tcp:read()` from [sock] to read from a TCP socket.
 __TIP__: Use `f:buffered_read()` from [fs] to read from a file.
 
 Example:
