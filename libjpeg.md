@@ -56,6 +56,7 @@ that to allow the read callback to yield (browsers don't support arithmetic
 decoding either for the same reason).
 
 __TIP__: Wrap `tcp:read()` from [sock] to read from a TCP socket.
+
 __TIP__: Use `f:buffered_read()` from [fs] to read from a file.
 
 Example:
