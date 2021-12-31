@@ -14,7 +14,7 @@ local function test_load_save()
 
 	local f2 = assert(fs.open(outfile, 'w'))
 	local function write(buf, sz)
-		assert(f2:write(buf, sz))
+		return f2:write(buf, sz)
 	end
 	libjpeg.save{bitmap = bmp, write = write}
 	img:free()

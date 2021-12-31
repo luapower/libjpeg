@@ -421,12 +421,12 @@ local function save(opt)
 		end
 
 		function cb.term_destination(cinfo)
-			write(buf, sz - tonumber(cinfo.dest.free_in_buffer))
+			assert(write(buf, sz - tonumber(cinfo.dest.free_in_buffer)))
 			finish()
 		end
 
 		function cb.empty_output_buffer(cinfo)
-			write(buf, sz)
+			assert(write(buf, sz))
 			cb.init_destination(cinfo)
 			return true
 		end
@@ -483,7 +483,6 @@ local function save(opt)
 		C.jpeg_finish_compress(cinfo)
 	end)
 end
-
 jit.off(save, true) --can't call error() from callbacks called from C.
 
 return {

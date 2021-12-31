@@ -114,11 +114,11 @@ Free the image and associated resources.
 
 ### `libjpeg.save(opt)`
 
-Save a [bitmap] as JPEG. `opt` is a table containing at least the source
+Encode a [bitmap] as JPEG. `opt` is a table containing at least the source
 bitmap and an output write function, and possibly other options:
 
   * `bitmap`: a [bitmap] in an accepted format.
-  * `write`: write data to a sink of the form `write(buf, size)`.
+  * `write`: write data to a sink of the form `write(buf, size) -> true | nil,err`.
   * `finish`: optional function to be called after all the data is written.
   * `format`: output format (see list of supported formats above).
   * `quality`: `0..100` range. you know what that is.
