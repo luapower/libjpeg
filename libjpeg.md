@@ -12,13 +12,13 @@ Comes with [libjpeg-turbo] binaries.
 ## API
 
 ------------------------------------ -----------------------------------------
-`libjpeg.open(opt | read) -> img`    open a JPEG image for decoding
-`img:load([opt]) -> bmp`             load the image into a bitmap
-`img:free()`                         free the image
+`libjpeg.open(opt | read) -> jpg`    open a JPEG image for decoding
+`jpg:load([opt]) -> bmp`             load the image into a bitmap
+`jpg:free()`                         free the image
 `libjpeg.save(opt)`                  compress a bitmap into a JPEG image
 ------------------------------------ -----------------------------------------
 
-### `libjpeg.open(opt | read) -> img`
+### `libjpeg.open(opt | read) -> jpg`
 
 Open a JPEG image and read its header. `opt` is a table containing at least
 the read function and possibly other options.
@@ -38,8 +38,8 @@ The `opt` table has the fields:
   * `read_buffer`: optional, the read buffer to use.
   * `read_buffer_size`: the read buffer size.
 
-The return value is an image object which gives information about the file
-and can be used to load and decode the actual pixels. It has the fields:
+The returned `jpg` object contains information about the file and can be used
+to load/decode the actual image. Its fields are:
 
   * `w`, `h`: width and height of the image.
   * `format`: the format in which the image is stored.
@@ -64,10 +64,10 @@ Example:
 ```lua
 local fs = require'fs'
 local f = assert(fs.open'foo.jpg')
-local img = assert(libjpeg.open{read = f:buffered_read(), skip_buffer = false})
+local jpg = assert(libjpeg.open{read = f:buffered_read(), skip_buffer = false})
 ```
 
-### `img:load([opt]) -> bmp`
+### `jpg:load([opt]) -> bmp`
 
 Load the image, returning a [bitmap] object. `opt` is an options table which
 can have the fields:
@@ -109,7 +109,7 @@ For more info on the decoding process and options read the
 
 __NOTE:__ the number of bits per channel in the output bitmap is always 8.
 
-### `img:free()`
+### `jpg:free()`
 
 Free the image and associated resources.
 
